@@ -82,13 +82,13 @@ with Image.open(blank_path) as blank_im:
             	   (new_origin_x, new_origin_y, selected_template['width'], selected_template['height']),
             	   selected_template['border_thickness'])
 
-            # # Add template version number to the back
-            # draw = ImageDraw.Draw(back_page)
-            # font = ImageFont.truetype("arial.ttf", 40)
-            # # Percent based location
-            # #draw.text((print_width*0.83, print_height*0.97), selected_template['template'], fill = (0, 0, 0), font = font)
-            # # "Raw" specified location
-            # draw.text((print_width - 561, print_height - 77), selected_template['template'], fill = (0, 0, 0), font = font)
+            # Add template version number to the back
+            draw = ImageDraw.Draw(back_page)
+            font = ImageFont.truetype(os.path.join(asset_directory, 'arial.ttf'), 40)
+            # Percent based location
+            #draw.text((print_width*0.83, print_height*0.97), selected_template['template'], fill = (0, 0, 0), font = font)
+            # "Raw" specified location
+            draw.text((print_width - 561, print_height - 77), selected_template['template'], fill = (0, 0, 0), font = font)
     
     # Create a copy of the blank template to paste the images onto
     front_page = blank_im.copy()
