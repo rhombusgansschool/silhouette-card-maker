@@ -1,0 +1,8 @@
+venv
+
+game/back/*
+!game/back/EMPTY.md
+game/front/*
+!game/front/EMPTY.md
+game/output/*
+!game/output/EMPTY.md
