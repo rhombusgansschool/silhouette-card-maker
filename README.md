@@ -5,7 +5,7 @@ Create a Python virtual environment.
 python -m venv venv
 ```
 
-Activate virtual enviornment.
+Activate virtual environment.
 ```shell
 . venv/bin/activate
 ```
