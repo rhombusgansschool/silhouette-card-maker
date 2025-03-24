@@ -13,11 +13,6 @@ from PIL import Image, ImageDraw, ImageFont
 # 'POKER_HALF'
 selected_template_type = 'STANDARD'
 
-# Unnecessary due to "image_paste_with_border" (?)
-#fill_inner_edge = True
-#num_lines = 15
-#fill = (255,255,255,255)
-
 # -------------------------------------
 
 # Specify directory locations
@@ -40,7 +35,7 @@ def image_paste_with_border(image: Image, page: Image, box: tuple[int, int, int,
 json_filename = 'card_size_config.json'
 json_path = os.path.join(asset_directory, json_filename)
 with open(json_path, 'r') as f:
-	templates = json.load(f)
+    templates = json.load(f)
 
 # Check if the selected template type is valid
 if selected_template_type not in templates.keys():
@@ -51,7 +46,6 @@ selected_template = templates[selected_template_type]
 num_rows = len(selected_template['y_pos'])
 num_cols = len(selected_template['x_pos'])
 num_cards = num_rows * num_cols
-
 
 # Load a blank page
 blank_filename = 'blank_page.jpg'
@@ -68,19 +62,21 @@ with Image.open(blank_path) as blank_im:
         back_filename = 'back.jpg'
         back_path = os.path.join(game_back_directory, back_filename)
         with Image.open(back_path) as back_im:
-        	# Fill all the spaces with the card back
-            for i in range(num_cards):
-                # Resize the image to the specified dimensions
-                back_im_resize = back_im.resize((selected_template['width'], selected_template['height']))
+            # Resize the back image to the specified dimensions
+            back_im_corr = back_im.resize((selected_template['width'], selected_template['height']))
+            # Rotate the back image to account for orientation
+            back_im_corr = back_im_corr.rotate(180)
 
+            # Fill all the spaces with the card back
+            for i in range(num_cards):
                 # Calculate the location of the new card based on what number the card is
                 new_origin_x = selected_template['x_pos'][i % num_cards % num_cols]
                 new_origin_y = selected_template['y_pos'][(i % num_cards) // num_cols]
-                # back_page.paste(back_im_resize.rotate(180), (new_origin_x, new_origin_y))
-                image_paste_with_border(back_im_resize.rotate(180),
-            	   back_page,
-            	   (new_origin_x, new_origin_y, selected_template['width'], selected_template['height']),
-            	   selected_template['border_thickness'])
+                # back_page.paste(back_im_corr, (new_origin_x, new_origin_y))
+                image_paste_with_border(back_im_corr,
+                   back_page,
+                   (new_origin_x, new_origin_y, selected_template['width'], selected_template['height']),
+                   selected_template['border_thickness'])
 
             # Add template version number to the back
             draw = ImageDraw.Draw(back_page)
@@ -96,20 +92,19 @@ with Image.open(blank_path) as blank_im:
     # Create the array that will store the filled templates
     pages = []
 
-    # Create the front pages using the images in game_front_directory
+    # Create the front pages using the images in game/front directory
     for path, subdirs, files in os.walk(game_front_directory):
-        # Iterate through all the files in the game_front_directory
+        # Iterate through all the files in the game/front directory
         n = 0
         for name in files:
             if name.endswith(".md"):
                 print(f"skipping {name}")
                 continue
-
             print(f"image {n}: {name}")
 
             # If the template is full, add to pages and restart
             if n and not (n % num_cards):
-                # Add a back page for every template
+                # Add a back page for every front page template
                 pages.append(front_page)
                 pages.append(back_page)
 
@@ -119,30 +114,21 @@ with Image.open(blank_path) as blank_im:
             # Load the image to process it
             front_path = os.path.join(path, name)
             with Image.open(front_path) as front_im:
-                # Resize the images to the specified dimensions
-                front_im_resize = front_im.resize((selected_template['width'], selected_template['height']))
-                
-                # Unnecessary due to "image_paste_with_border" (?)
-                #if fill_inner_edge:
-                #    front_im_draw = ImageDraw.Draw(front_im_resize)
-                #    # Draw lines on each of the four edges
-                #    for i in range(num_lines):
-                #        front_im_draw.line([(0, i), (selected_template['width'], i)], fill=fill, width=1)
-                #        front_im_draw.line([(0, selected_template['height'] - i), (selected_template['width'], selected_template['height'] - i)], fill=fill, width=1)
-                #        front_im_draw.line([(i, 0), (i, selected_template['height'])], fill=fill, width=1)
-                #        front_im_draw.line([(selected_template['width'] - i, 0), (selected_template['width'] - i, selected_template['height'])], fill=fill, width=1)
+                # Resize the front images to the specified dimension
+                front_im_corr = front_im.resize((selected_template['width'], selected_template['height']))
 
                 # Calculate the location of the new card based on what number the card is
                 new_origin_x = selected_template['x_pos'][n % num_cards % num_cols]
                 new_origin_y = selected_template['y_pos'][(n % num_cards) // num_cols]
-                # front_page.paste(front_im_resize, (new_origin_x, new_origin_y))
-                image_paste_with_border(front_im_resize, front_page,
-                	(new_origin_x, new_origin_y, selected_template['width'], selected_template['height']),
-                	selected_template['border_thickness'])
+                # front_page.paste(front_im_corr, (new_origin_x, new_origin_y))
+                image_paste_with_border(front_im_corr,
+                    front_page,
+                    (new_origin_x, new_origin_y, selected_template['width'], selected_template['height']),
+                    selected_template['border_thickness'])
 
             n += 1
 
-    # Export the final template (filled or not)
+    # Export the final front page template (filled or not) with a back page
     pages.append(front_page)
     pages.append(back_page)
 
