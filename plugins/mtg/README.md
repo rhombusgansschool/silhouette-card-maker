@@ -26,7 +26,7 @@ Now you can create the PDF using [`create_pdf.py`](../../README.md#create_pdfpy)
 
 ```
 Usage: fetch.py [OPTIONS] DECK_PATH
-                {simple|mtga|mtgo|archidekt|deckstats|moxfield}
+                {simple|mtga|mtgo|archidekt|deckstats|moxfield|scryfall_json}
 
 Options:
   -i, --ignore_set_and_collector_number
@@ -40,8 +40,9 @@ Options:
                                   preferred sets.
   --prefer_showcase               Prefer fetching cards with showcase
                                   treatment
-  --prefer_extra_art               Prefer fetching cards with full art,
+  --prefer_extra_art              Prefer fetching cards with full art,
                                   borderless, or extended art.
+  --tokens                        Fetch related tokens when fetching cards
   --help                          Show this message and exit.
 ```
 

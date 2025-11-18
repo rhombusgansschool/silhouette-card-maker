@@ -17,12 +17,13 @@ double_sided_directory = os.path.join('game', 'double_sided')
 @click.option('-s', '--prefer_set', multiple=True, help="Prefer fetching cards from a particular set(s) if sets are not provided. Use this option multiple times to specify multiple preferred sets.")
 @click.option('--prefer_showcase', default=False, is_flag=True, show_default=True, help="Prefer fetching cards with showcase treatment")
 @click.option('--prefer_extra_art', default=False, is_flag=True, show_default=True, help="Prefer fetching cards with full art, borderless, or extended art.")
-@click.option('--tokens', default=False, is_flag=True, show_default=True, help="Fetch related tokens when downloading cards")
+@click.option('--tokens', default=False, is_flag=True, show_default=True, help="Fetch related tokens when fetching cards")
 
 def cli(
     deck_path: str,
     format: DeckFormat,
     ignore_set_and_collector_number: bool,
+
     prefer_older_sets: bool,
     prefer_set: Set[str],
 
@@ -45,7 +46,7 @@ def cli(
 
                 prefer_older_sets,
                 prefer_set,
-                
+
                 prefer_showcase,
                 prefer_extra_art,
                 tokens,

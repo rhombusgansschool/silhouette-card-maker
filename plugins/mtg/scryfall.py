@@ -114,12 +114,14 @@ def fetch_card(
 
         fetch_card_art(index, quantity, remove_nonalphanumeric(card_json['name']), card_set, card_collector_number, card_json['layout'], front_img_dir, double_sided_dir)
 
-        if all_parts := card_json.get("all_parts"):
-            for related in all_parts:
-                if related["component"] == "token":
-                    card_info_query = related["uri"]
-                    card_json = request_scryfall(card_info_query).json()
-                    fetch_card_art(index, quantity, remove_nonalphanumeric(related["name"]), card_json["set"], card_json["collector_number"], card_json["layout"], front_img_dir, double_sided_dir)
+        # Fetch tokens
+        if tokens:
+            if all_parts := card_json.get("all_parts"):
+                for related in all_parts:
+                    if related["component"] == "token":
+                        card_info_query = related["uri"]
+                        card_json = request_scryfall(card_info_query).json()
+                        fetch_card_art(index, quantity, remove_nonalphanumeric(related["name"]), card_json["set"], card_json["collector_number"], card_json["layout"], front_img_dir, double_sided_dir)
 
     else:
         if name == "":
@@ -178,12 +180,14 @@ def fetch_card(
             double_sided_dir
         )
 
-        if all_parts := card_json.get("all_parts"):
-            for related in all_parts:
-                if related["component"] == "token":
-                    card_info_query = related["uri"]
-                    card_json = request_scryfall(card_info_query).json()
-                    fetch_card_art(index, quantity, remove_nonalphanumeric(related["name"]), card_json["set"], card_json["collector_number"], card_json["layout"], front_img_dir, double_sided_dir)
+        # Fetch tokens
+        if tokens:
+            if all_parts := card_json.get("all_parts"):
+                for related in all_parts:
+                    if related["component"] == "token":
+                        card_info_query = related["uri"]
+                        card_json = request_scryfall(card_info_query).json()
+                        fetch_card_art(index, quantity, remove_nonalphanumeric(related["name"]), card_json["set"], card_json["collector_number"], card_json["layout"], front_img_dir, double_sided_dir)
 
 def get_handle_card(
     ignore_set_and_collector_number: bool,
