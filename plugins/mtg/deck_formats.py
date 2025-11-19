@@ -209,7 +209,7 @@ def parse_scryfall_json(deck_text, handle_card: Callable) -> None:
             handle_card(index, name, set_code, collector_number, quantity)
 
 # MPCFill XML
-def parse_mpcfill(deck_text, handle_card: Callable) -> None:
+def parse_mpcfill_xml(deck_text, handle_card: Callable) -> None:
     # We need to convert this into a more usable format for sanity
     # The back field will only exist if the back of a card exists
     # {
@@ -273,6 +273,6 @@ def parse_deck(deck_text: str, format: DeckFormat, handle_card: Callable) -> Non
     elif format == DeckFormat.SCRYFALL_JSON:
         parse_scryfall_json(deck_text, handle_card)
     elif format == DeckFormat.MPCFILL_XML:
-        parse_mpcfill(deck_text, handle_card)
+        parse_mpcfill_xml(deck_text, handle_card)
     else:
         raise ValueError("Unrecognized deck format")

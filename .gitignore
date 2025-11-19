@@ -18,5 +18,7 @@ data
 
 images/*.xcf
 
+test/*/output/*
+
 hugo/public/
 .vscode/launch.json
