@@ -19,6 +19,7 @@ data
 images/*.xcf
 
 test/*/output/*
+!test/*/output/EMPTY.md
 
 hugo/public/
 .vscode/launch.json
