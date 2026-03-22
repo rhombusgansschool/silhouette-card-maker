@@ -141,6 +141,27 @@
             "pdf_width": "11in",
             "pdf_height": "8.5in",
             "pdf_registration_inset": "3mm"
+        },
+        "tabloid_borderless": {
+            "width": "445.8mm",
+            "height": "293.4mm",
+            "pdf_width": "17in",
+            "pdf_height": "11in",
+            "pdf_registration_inset": "3mm"
+        },
+        "a3_borderless": {
+            "width": "434mm",
+            "height": "311mm",
+            "pdf_width": "420mm",
+            "pdf_height": "297mm",
+            "pdf_registration_inset": "3mm"
+        },
+        "arch_b_borderless": {
+            "width": "471.2mm",
+            "height": "318.8mm",
+            "pdf_width": "18in",
+            "pdf_height": "12in",
+            "pdf_registration_inset": "3mm"
         }
     },
     "layouts": {
@@ -1006,28 +1027,6 @@
                 "num_cols": 4,
                 "registration": {
                     "length": "39.71mm"
-                }
-            }
-        },
-        "a4_borderless": {
-            "standard": {
-                "orientation": "portrait",
-                "version": 3,
-                "num_rows": 3,
-                "num_cols": 3,
-                "registration": {
-                    "length": "9.4mm"
-                }
-            }
-        },
-        "letter_borderless": {
-            "standard": {
-                "orientation": "portrait",
-                "version": 1,
-                "num_rows": 3,
-                "num_cols": 3,
-                "registration": {
-                    "length": "7.87mm"
                 }
             }
         }
