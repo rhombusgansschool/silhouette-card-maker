@@ -21,7 +21,7 @@ import page_manager
 import dxf_manager
 import size_convert
 from enums import Orientation, OrientationMode
-from utilities import LayoutConfig, load_layout_config, template_name, resolve_card_size_alias, resolve_paper_size_alias, get_all_card_size_names, get_all_paper_size_names, find_best_orientation, derive_borderless_paper, PaperSizeDef
+from utilities import LayoutConfig, load_layout_config, template_name, resolve_card_size_alias, resolve_paper_size_alias, get_all_card_size_names, get_all_paper_size_names, find_best_orientation
 
 OUTPUT_DIR = Path("cutting_templates") / "dxf"
 LAYOUTS_PATH = Path("assets") / "layouts.json"
@@ -29,28 +29,6 @@ LAYOUTS_PATH = Path("assets") / "layouts.json"
 layout_config = load_layout_config()
 card_size_choices = get_all_card_size_names(layout_config)
 paper_size_choices = get_all_paper_size_names(layout_config)
-
-
-def get_cut_template_inset(paper_def, default_inset: str) -> str:
-    """Return the inset to use for DXF layout generation.
-
-    If a paper defines PDF overrides (pdf_width/pdf_height), map the PDF inset
-    into the larger virtual media so card-to-registration geometry stays aligned:
-
-        template_inset = ((paper - pdf) / 2) + pdf_inset
-    """
-    if not paper_def.pdf_width or not paper_def.pdf_height:
-        return default_inset
-
-    border_w_mm = (size_convert.size_to_mm(paper_def.width) - size_convert.size_to_mm(paper_def.pdf_width)) / 2
-    border_h_mm = (size_convert.size_to_mm(paper_def.height) - size_convert.size_to_mm(paper_def.pdf_height)) / 2
-
-    if border_w_mm < 0 or border_h_mm < 0:
-        return default_inset
-
-    pdf_inset_mm = size_convert.size_to_mm(paper_def.pdf_registration_inset or "0mm")
-    inset_mm = min(border_w_mm, border_h_mm) + pdf_inset_mm
-    return f"{round(inset_mm, 4)}mm"
 
 
 def generate_single_dxf(
@@ -69,7 +47,12 @@ def generate_single_dxf(
     layout_def = config.layouts[paper_size][card_size]
     reg = config.defaults.registration
     ppi = config.ppi
-    template_inset = get_cut_template_inset(paper_def, reg.inset)
+
+    # Use borderless inset for borderless papers
+    if paper_size.endswith('_borderless'):
+        template_inset = config.defaults.borderless_registration_inset
+    else:
+        template_inset = reg.inset
 
     orientation = layout_def.orientation
     version = layout_def.version
@@ -132,8 +115,7 @@ def generate_single_dxf(
 
 @click.option("--orientation", type=click.Choice([e.value for e in OrientationMode], case_sensitive=False), default=OrientationMode.OPTIMIZE.value, show_default=True, help="Page orientation: optimize (auto-select), landscape, or portrait.")
 @click.option("--output_dir_path", type=click.Path(), default=str(OUTPUT_DIR), show_default=True, help="Output directory for DXF files.")
-@click.option("--borderless", default=False, is_flag=True, help="Generate borderless DXF templates with tighter margins.")
-def cli(paper_size, card_size, card_height, card_width, card_radius, paper_height, paper_width, card_name, paper_name, save, generate_all, generate_new, optimize_all, orientation, output_dir_path, borderless):
+def cli(paper_size, card_size, card_height, card_width, card_radius, paper_height, paper_width, card_name, paper_name, save, generate_all, generate_new, optimize_all, orientation, output_dir_path):
     """Generate DXF cutting templates from layouts.json."""
     config = load_layout_config()
 

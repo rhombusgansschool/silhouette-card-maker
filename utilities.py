@@ -108,9 +108,6 @@ class PaperSizeDef(BaseModel):
     width: str
     height: str
     aliases: Optional[List[str]] = None
-    pdf_width: Optional[str] = None
-    pdf_height: Optional[str] = None
-    pdf_registration_inset: Optional[str] = None
 
     @model_validator(mode='after')
     def width_gte_height(self) -> 'PaperSizeDef':
@@ -664,29 +661,6 @@ def resolve_image_with_any_extension(path: str) -> str:
         raise ValueError(f"Ambiguous image match: {matches}")
 
     return matches[0]
-
-def derive_borderless_paper(
-    paper_def: PaperSizeDef,
-    default_inset: str,
-    borderless_inset: str,
-) -> PaperSizeDef:
-    """Derive borderless paper parameters from a regular paper size.
-
-    Returns a PaperSizeDef with:
-    - width/height: virtual media size (for DXF/Silhouette Studio)
-    - pdf_width/pdf_height: original paper size (for PDF output)
-    - pdf_registration_inset: borderless inset
-    """
-    margin_mm = size_convert.size_to_mm(default_inset) - size_convert.size_to_mm(borderless_inset)
-    virtual_w = size_convert.size_to_mm(paper_def.width) + 2 * margin_mm
-    virtual_h = size_convert.size_to_mm(paper_def.height) + 2 * margin_mm
-    return PaperSizeDef(
-        width=f"{round(virtual_w, 1)}mm",
-        height=f"{round(virtual_h, 1)}mm",
-        pdf_width=paper_def.width,
-        pdf_height=paper_def.height,
-        pdf_registration_inset=borderless_inset,
-    )
 
 
 def find_best_orientation(
