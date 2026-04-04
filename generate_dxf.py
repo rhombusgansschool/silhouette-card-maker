@@ -34,22 +34,26 @@ paper_size_choices = get_all_paper_size_names(layout_config)
 def generate_single_dxf(
     card_size: str,
     paper_size: str,
+    variant: str,
     config: LayoutConfig,
     output_dir: Path,
 ) -> tuple[int, int, float]:
-    """Generate a single DXF file for a paper/card combination.
+    """Generate a single DXF file for a paper/card/variant combination.
+
+    Args:
+        variant: "normal" or "borderless"
 
     Returns:
         (num_cols, num_rows, max_length_mm) tuple.
     """
     card_def = config.card_sizes[card_size]
     paper_def = config.paper_sizes[paper_size]
-    layout_def = config.layouts[paper_size][card_size]
+    layout_def = config.layouts[paper_size][card_size][variant]
     reg = config.defaults.registration
     ppi = config.ppi
 
-    # Use borderless inset for borderless papers
-    if paper_size.endswith('_borderless'):
+    # Use borderless inset for borderless variant
+    if variant == "borderless":
         template_inset = config.defaults.borderless_registration_inset
     else:
         template_inset = reg.inset
@@ -74,7 +78,7 @@ def generate_single_dxf(
     num_cols = len(x_pos)
     num_rows = len(y_pos)
 
-    name = template_name(paper_size, card_size, version)
+    name = template_name(paper_size, card_size, variant, version)
     output_file = output_dir / f"{name}.dxf"
 
     dxf_manager.generate_dxf(

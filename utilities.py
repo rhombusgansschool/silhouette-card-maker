@@ -190,9 +190,18 @@ def get_all_specialty_layout_names(layout_config: LayoutConfig) -> List[str]:
     return sorted(layout_config.specialty_layouts.keys())
 
 
-def template_name(paper_size: str, card_size: str, version: int) -> str:
-    """Compose the standard template name: {paper_size}-{card_size}-v{version}."""
-    return f"{paper_size}-{card_size}-v{version}"
+def template_name(paper_size: str, card_size: str, variant: str, version: int) -> str:
+    """Compose the standard template name: {paper_size}-{card_size}-{variant}-v{version}.
+
+    Note: 'normal' variant is omitted from the name for backwards compatibility.
+    Examples:
+        - normal: letter-bridge-v4
+        - borderless: letter-bridge-borderless-v1
+    """
+    if variant == "normal":
+        return f"{paper_size}-{card_size}-v{version}"
+    else:
+        return f"{paper_size}-{card_size}-{variant}-v{version}"
 
 
 # Known junk files across OSes
@@ -854,49 +863,38 @@ def generate_pdf(
             raise Exception(f'Unsupported paper size "{paper_size}". Try paper sizes: {list(layout_config.paper_sizes.keys())}.')
         paper_size_def = layout_config.paper_sizes[paper_size]
 
+        # Select variant based on borderless flag
+        variant = "borderless" if borderless else "normal"
+
+        # Look up layout from nested structure: layouts[paper][card][variant]
+        if paper_size not in layout_config.layouts or card_size not in layout_config.layouts[paper_size]:
+            raise Exception(f'No layout defined for paper "{paper_size}" with card "{card_size}". Add it to layouts.json.')
+
+        card_layouts = layout_config.layouts[paper_size][card_size]
+        if variant not in card_layouts:
+            raise Exception(f'No {variant} layout defined for paper "{paper_size}" with card "{card_size}". Add it to layouts.json.')
+
+        layout_def = card_layouts[variant]
+        orientation = layout_def.orientation
+        version = layout_def.version
+
+        # Effective registration: merge per-layout overrides on top of defaults
+        # Borderless uses borderless_registration_inset (3mm), normal uses regular inset (10mm)
+        layout_reg = layout_def.registration
+        lr = layout_reg or RegistrationSettings()
+
         if borderless:
-            if paper_size.endswith('_borderless'):
-                raise Exception(f'Cannot use --borderless with paper size "{paper_size}". Use the base paper size instead (e.g. "a4").')
-
-            bl_inset = layout_config.defaults.borderless_registration_inset
-            paper_size_def = derive_borderless_paper(paper_size_def, default_reg.inset, bl_inset)
-
-            total_exclusion_mm = size_convert.size_to_mm(default_reg.length) + page_manager.REG_PADDING_MM
-            orientation, _ = find_best_orientation(
-                OrientationMode.OPTIMIZE,
-                card_size_def.width, card_size_def.height,
-                paper_size_def.pdf_width, paper_size_def.pdf_height,
-                inset=bl_inset,
-                length=f"{total_exclusion_mm}mm",
-                ppi=layout_config.ppi,
-            )
-
-            template = template_name(f"{paper_size}_borderless", card_size, 1)
-            pdf_width = paper_size_def.pdf_width
-            pdf_height = paper_size_def.pdf_height
-            pdf_inset = bl_inset
-            effective_inset = default_reg.inset
-            effective_thickness = default_reg.thickness
-            # effective_length set after generate_layout() using computed max
+            effective_inset = lr.inset or layout_config.defaults.borderless_registration_inset
         else:
-            # Look up orientation and version from the layouts field (per paper+card combination)
-            if paper_size not in layout_config.layouts or card_size not in layout_config.layouts[paper_size]:
-                raise Exception(f'No layout defined for paper "{paper_size}" with card "{card_size}". Add it to layouts.json.')
-            layout_def = layout_config.layouts[paper_size][card_size]
-            orientation = layout_def.orientation
-            version = layout_def.version
-
-            # Effective registration: merge per-layout overrides on top of defaults
-            layout_reg = layout_def.registration
-            lr = layout_reg or RegistrationSettings()
             effective_inset = lr.inset or default_reg.inset
-            effective_thickness = lr.thickness or default_reg.thickness
-            effective_length = lr.length or default_reg.length
 
-            template = template_name(paper_size, card_size, version)
-            pdf_width = paper_size_def.pdf_width or paper_size_def.width
-            pdf_height = paper_size_def.pdf_height or paper_size_def.height
-            pdf_inset = paper_size_def.pdf_registration_inset or effective_inset
+        effective_thickness = lr.thickness or default_reg.thickness
+        effective_length = lr.length or default_reg.length
+
+        template = template_name(paper_size, card_size, variant, version)
+        pdf_width = paper_size_def.width
+        pdf_height = paper_size_def.height
+        pdf_inset = effective_inset
 
     # Corner exclusion zone = configured mark length + padding constant
     total_exclusion_mm = size_convert.size_to_mm(default_reg.length) + page_manager.REG_PADDING_MM
