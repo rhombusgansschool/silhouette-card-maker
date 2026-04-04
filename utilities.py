@@ -597,7 +597,7 @@ def draw_outline(
                 width=1,
             )
 
-def add_front_back_pages(front_page: Image.Image, back_page: Image.Image, pages: List[Image.Image], page_width: int, page_height: int, ppi_ratio: float, template: str, only_fronts: bool, label: str, orientation: Orientation, grid_end_x: int, grid_end_y: int):
+def add_front_back_pages(front_page: Image.Image, back_page: Image.Image, pages: List[Image.Image], page_width: int, page_height: int, ppi_ratio: float, template: str, only_fronts: bool, label: str, orientation: Orientation, inset_px: int):
     font = ImageFont.truetype(os.path.join(asset_directory, 'arial.ttf'), 40 * ppi_ratio)
 
     num_sheet = len(pages) + 1
@@ -608,24 +608,25 @@ def add_front_back_pages(front_page: Image.Image, back_page: Image.Image, pages:
     if label is not None:
         label_text = f'label: {label}, {label_text}'
 
-    # Label goes on the short side of the paper, opposite the top-left black square.
+    # Label goes on the short side of the paper, opposite the top-left black square,
+    # positioned in the center of the inset region.
     # Landscape: short sides are left/right; black square top-left → label on RIGHT.
     # Portrait: short sides are top/bottom; black square top-left → label on BOTTOM.
-    # Position the label at the midpoint between the card grid edge and the page edge
-    # so it never overlaps card content, even with tight borderless margins.
+    label_margin_px = math.floor((page_width - inset_px / 2) * ppi_ratio) if orientation == Orientation.LANDSCAPE else math.floor((page_height - inset_px / 2) * ppi_ratio)
+
     if orientation == Orientation.LANDSCAPE:
         # Right side: rotate page, draw horizontal text, rotate back
         front_page = front_page.rotate(-90, expand=True)
         draw = ImageDraw.Draw(front_page)
         label_x = math.floor((page_height / 2) * ppi_ratio)
-        label_y = math.floor((grid_end_x + page_width) / 2 * ppi_ratio)
+        label_y = label_margin_px
         draw.text((label_x, label_y), label_text, fill=(0, 0, 0), anchor="mm", font=font)
         front_page = front_page.rotate(90, expand=True)
     else:
         # Bottom side: horizontal text
         draw = ImageDraw.Draw(front_page)
         label_x = math.floor((page_width / 2) * ppi_ratio)
-        label_y = math.floor((grid_end_y + page_height) / 2 * ppi_ratio)
+        label_y = label_margin_px
         draw.text((label_x, label_y), label_text, fill=(0, 0, 0), anchor="mm", font=font)
 
     # Rotate portrait pages to landscape so the generated PDF is always landscape.
@@ -921,10 +922,6 @@ def generate_pdf(
     if borderless:
         effective_length = f"{computed.max_length_mm}mm"
 
-    # Card grid extent (used for label placement)
-    grid_end_x = x_pos[-1] + card_width_px if len(x_pos) > 0 else 0
-    grid_end_y = y_pos[-1] + card_height_px if len(y_pos) > 0 else 0
-
     # Determine the amount of x and y crop
     crop = parse_crop_string(crop_string, card_width_px, card_height_px)
     crop_backs = parse_crop_string(crop_backs_string, card_width_px, card_height_px)
@@ -956,7 +953,6 @@ def generate_pdf(
     ppi_ratio = ppi / 300
 
     inset_px = size_convert.size_to_pixel(pdf_inset, layout_config.ppi)
-    clamp_inset_min = size_convert.size_to_mm(pdf_inset) >= page_manager.MIN_REG_INSET_MM
 
     # Load an image with the registration marks
     with page_manager.generate_reg_mark(
@@ -968,7 +964,6 @@ def generate_pdf(
         layout_config.ppi,
         registration,
         orientation,
-        clamp_inset_min=clamp_inset_min,
     ) as reg_im:
         reg_im = reg_im.resize([math.floor(reg_im.width * ppi_ratio), math.floor(reg_im.height * ppi_ratio)])
 
@@ -1113,8 +1108,7 @@ def generate_pdf(
                 only_fronts,
                 label,
                 orientation,
-                grid_end_x,
-                grid_end_y
+                inset_px
             )
 
         if len(pages) == 0:
