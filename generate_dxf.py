@@ -127,7 +127,7 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
     out.mkdir(parents=True, exist_ok=True)
 
     if optimize_all:
-        generate_all_optimized(config, out, borderless=borderless)
+        generate_all_optimized(config, out)
         return
 
     if generate_all or generate_new:
@@ -141,74 +141,11 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
         print(f"Generating DXF files to: {out}")
         print()
 
-        if borderless:
-            # Borderless batch: iterate over regular papers and card sizes,
-            # derive borderless paper, compute layout inline.
-            reg = config.defaults.registration
-            ppi = config.ppi
-            bl_inset = config.defaults.borderless_registration_inset
-            total_length_mm = size_convert.size_to_mm(reg.length) + page_manager.REG_PADDING_MM
-
-            for ps, paper_def in config.paper_sizes.items():
-                if ps.endswith("_borderless"):
-                    continue
-                bl_paper = derive_borderless_paper(paper_def, reg.inset, bl_inset)
-                bl_paper_name = f"{ps}_borderless"
-                template_inset = get_cut_template_inset(bl_paper, reg.inset)
-
-                for cs, card_def in config.card_sizes.items():
-                    try:
-                        card_w_px = size_convert.size_to_pixel(card_def.width, ppi)
-                        card_h_px = size_convert.size_to_pixel(card_def.height, ppi)
-                        preferred = Orientation.PORTRAIT if card_w_px == card_h_px else Orientation.LANDSCAPE
-
-                        try:
-                            best_orientation, computed = find_best_orientation(
-                                OrientationMode.OPTIMIZE,
-                                card_def.width,
-                                card_def.height,
-                                bl_paper.width,
-                                bl_paper.height,
-                                inset=template_inset,
-                                length=f"{total_length_mm}mm",
-                                ppi=ppi,
-                                preferred=preferred,
-                            )
-                        except ValueError:
-                            print(f"  {bl_paper_name} + {cs}: no valid layout, skipping")
-                            continue
-
-                        num_cols = len(computed.x_pos)
-                        num_rows = len(computed.y_pos)
-                        num_cards = num_cols * num_rows
-                        name = template_name(bl_paper_name, cs, 1)
-                        output_file = out / f"{name}.dxf"
-
-                        if generate_new and output_file.exists():
-                            skipped += 1
-                            continue
-
-                        dxf_manager.generate_dxf(
-                            card_def.width,
-                            card_def.height,
-                            card_def.radius or config.defaults.card_radius,
-                            computed.x_pos,
-                            computed.y_pos,
-                            ppi,
-                            output_path=str(output_file),
-                        )
-
-                        print(f"  {bl_paper_name} + {cs}: {num_cols}x{num_rows} ({num_cards} cards), max_length={computed.max_length_mm}mm, media_size={bl_paper.width}x{bl_paper.height} -> {output_file}")
-                        generated += 1
-                    except Exception as e:
-                        print(f"  Error: {bl_paper_name} + {cs}: {e}")
-                        error_list.append((f"{bl_paper_name} + {cs}", e))
-                        errors += 1
-        else:
-            for ps, cards in config.layouts.items():
-                for cs in cards:
-                    layout_def = config.layouts[ps][cs]
-                    name = template_name(ps, cs, layout_def.version)
+        # Iterate over all paper/card/variant combinations
+        for ps, cards in config.layouts.items():
+            for cs, variants in cards.items():
+                for variant, layout_def in variants.items():
+                    name = template_name(ps, cs, variant, layout_def.version)
                     output_file = out / f"{name}.dxf"
 
                     if generate_new and output_file.exists():
@@ -216,23 +153,22 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
                         continue
 
                     try:
-                        num_cols, num_rows, ml_mm = generate_single_dxf(cs, ps, config, out)
-                        raw_config["layouts"][ps][cs]["num_rows"] = num_rows
-                        raw_config["layouts"][ps][cs]["num_cols"] = num_cols
-                        raw_config["layouts"][ps][cs]["registration"] = {"length": f"{ml_mm}mm"}
+                        num_cols, num_rows, ml_mm = generate_single_dxf(cs, ps, variant, config, out)
+                        raw_config["layouts"][ps][cs][variant]["num_rows"] = num_rows
+                        raw_config["layouts"][ps][cs][variant]["num_cols"] = num_cols
+                        raw_config["layouts"][ps][cs][variant]["registration"] = {"length": f"{ml_mm}mm"}
                         generated += 1
                     except Exception as e:
-                        print(f"  Error: {ps} + {cs}: {e}")
-                        error_list.append((f"{ps} + {cs}", e))
+                        print(f"  Error: {ps} + {cs} ({variant}): {e}")
+                        error_list.append((f"{ps} + {cs} ({variant})", e))
                         errors += 1
 
         if error_list:
             print(f'Errors: {error_list}')
 
-        if not borderless:
-            with open(LAYOUTS_PATH, 'w') as f:
-                json.dump(raw_config, f, indent=4)
-                f.write('\n')
+        with open(LAYOUTS_PATH, 'w') as f:
+            json.dump(raw_config, f, indent=4)
+            f.write('\n')
 
         print()
         summary = f"Generated {generated} DXF files ({errors} errors)"
@@ -293,12 +229,6 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
         resolved_paper_width = paper_def.width
         resolved_paper_height = paper_def.height
         paper_label = paper_size
-        if borderless:
-            bl_inset = config.defaults.borderless_registration_inset
-            paper_def = derive_borderless_paper(paper_def, config.defaults.registration.inset, bl_inset)
-            resolved_paper_width = paper_def.width
-            resolved_paper_height = paper_def.height
-            paper_label = f"{paper_label}_borderless"
     else:
         pl_mm = size_convert.size_to_mm(paper_height)
         pw_mm = size_convert.size_to_mm(paper_width)
@@ -309,13 +239,6 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
             resolved_paper_width = paper_width
             resolved_paper_height = paper_height
         paper_label = f"{paper_width}x{paper_height}"
-        if borderless:
-            bl_inset = config.defaults.borderless_registration_inset
-            temp_paper = PaperSizeDef(width=resolved_paper_width, height=resolved_paper_height)
-            paper_def_for_bl = derive_borderless_paper(temp_paper, config.defaults.registration.inset, bl_inset)
-            resolved_paper_width = paper_def_for_bl.width
-            resolved_paper_height = paper_def_for_bl.height
-            paper_label = f"{paper_label}_borderless"
 
     # Apply name overrides
     if card_name is not None:
@@ -323,12 +246,19 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
     if paper_name is not None:
         paper_label = paper_name
 
-    # Determine version for the output filename
-    version_lookup_paper = paper_label if borderless else (paper_size or paper_label)
-    layout_def = config.layouts.get(version_lookup_paper, {}).get(card_size or card_label)
-    version = layout_def.version if layout_def else 1
+    # Determine version and variant for the output filename
+    # For custom paper/card sizes, use "normal" variant
+    variant = "normal"
+    version = 1
 
-    name = template_name(paper_label, card_label, version)
+    # Try to look up existing layout definition
+    if paper_size and card_size:
+        paper_layouts = config.layouts.get(paper_size, {})
+        card_variants = paper_layouts.get(card_size, {})
+        if variant in card_variants:
+            version = card_variants[variant].version
+
+    name = template_name(paper_label, card_label, variant, version)
     output_file = out / f"{name}.dxf"
 
     reg = config.defaults.registration
@@ -342,8 +272,6 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
 
     try:
         template_inset = reg.inset
-        if has_paper_size:
-            template_inset = get_cut_template_inset(paper_def, reg.inset)
 
         resolved_orientation, computed = find_best_orientation(
             OrientationMode(orientation),
@@ -375,8 +303,7 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
     )
 
     num_cards = num_cols * num_rows
-    media_info = f", media_size={resolved_paper_width}x{resolved_paper_height}" if borderless else ""
-    print(f"  {paper_label} + {card_label}: {num_cols}x{num_rows} ({num_cards} cards), max_length={computed.max_length_mm}mm{media_info} -> {output_file}")
+    print(f"  {paper_label} + {card_label}: {num_cols}x{num_rows} ({num_cards} cards), max_length={computed.max_length_mm}mm -> {output_file}")
 
     if save:
         with open(LAYOUTS_PATH, 'r') as f:
@@ -401,17 +328,26 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
             print(f"  Saved new paper size '{paper_label}': {resolved_paper_width} x {resolved_paper_height}")
             changed = True
 
-        if paper_label not in raw_config["layouts"] or card_label not in raw_config["layouts"].get(paper_label, {}):
+        # Check if layout exists for this paper/card/variant combination
+        layout_exists = (
+            paper_label in raw_config["layouts"]
+            and card_label in raw_config["layouts"].get(paper_label, {})
+            and variant in raw_config["layouts"][paper_label].get(card_label, {})
+        )
+
+        if not layout_exists:
             if paper_label not in raw_config["layouts"]:
                 raw_config["layouts"][paper_label] = {}
-            raw_config["layouts"][paper_label][card_label] = {
+            if card_label not in raw_config["layouts"][paper_label]:
+                raw_config["layouts"][paper_label][card_label] = {}
+            raw_config["layouts"][paper_label][card_label][variant] = {
                 "orientation": resolved_orientation.value,
                 "version": version,
                 "num_rows": num_rows,
                 "num_cols": num_cols,
                 "registration": {"length": f"{computed.max_length_mm}mm"},
             }
-            print(f"  Saved new layout '{paper_label}' + '{card_label}'")
+            print(f"  Saved new layout '{paper_label}' + '{card_label}' ({variant})")
             changed = True
 
         if changed:
@@ -424,10 +360,10 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
     print("Done!")
 
 
-def generate_all_optimized(config: LayoutConfig, out: Path, borderless=False):
-    """Generate DXF files for all paper/card combinations, optimizing orientation.
+def generate_all_optimized(config: LayoutConfig, out: Path):
+    """Generate DXF files for all paper/card/variant combinations, optimizing orientation.
 
-    Iterates over every paper_size × card_size combination from layouts.json.
+    Iterates over every paper_size × card_size × variant combination from layouts.json.
     For existing layouts, re-optimizes orientation and bumps the version if
     it changes. For missing combinations, creates a new layout entry at v1.
     """
@@ -442,122 +378,97 @@ def generate_all_optimized(config: LayoutConfig, out: Path, borderless=False):
     print(f"Optimizing orientations and generating DXF files to: {out}")
     print()
 
-    for paper_size, paper_def in config.paper_sizes.items():
-        if borderless and paper_size.endswith("_borderless"):
-            continue
+    # Iterate over all paper/card/variant combinations
+    for paper_size, cards in config.layouts.items():
+        paper_def = config.paper_sizes[paper_size]
 
-        if borderless:
-            bl_inset = config.defaults.borderless_registration_inset
-            paper_def = derive_borderless_paper(paper_def, config.defaults.registration.inset, bl_inset)
-            effective_paper_name = f"{paper_size}_borderless"
-        else:
-            effective_paper_name = paper_size
+        for card_size, variants in cards.items():
+            card_def = config.card_sizes[card_size]
 
-        for card_size, card_def in config.card_sizes.items():
-            try:
-                reg = config.defaults.registration
-                ppi = config.ppi
-                total_length_mm = size_convert.size_to_mm(reg.length) + page_manager.REG_PADDING_MM
-                template_inset = get_cut_template_inset(paper_def, reg.inset)
-
-                if not borderless:
-                    # Check if a layout already exists for this combination
-                    existing = (
-                        paper_size in config.layouts
-                        and card_size in config.layouts[paper_size]
-                    )
-                    if existing:
-                        layout_def = config.layouts[paper_size][card_size]
-                        version = layout_def.version
-                    else:
-                        version = 1
-                else:
-                    existing = False
-                    version = 1
-
-                # Non-square cards: prefer landscape page so cards sit portrait.
-                # Square cards: prefer portrait page (card looks the same either way).
-                card_w_px = size_convert.size_to_pixel(card_def.width, ppi)
-                card_h_px = size_convert.size_to_pixel(card_def.height, ppi)
-                preferred = (
-                    Orientation.PORTRAIT if card_w_px == card_h_px
-                    else Orientation.LANDSCAPE
-                )
-
+            for variant, layout_def in variants.items():
                 try:
-                    best_orientation, best_computed = find_best_orientation(
-                        OrientationMode.OPTIMIZE,
-                        card_def.width,
-                        card_def.height,
-                        paper_def.width,
-                        paper_def.height,
-                        inset=template_inset,
-                        length=f"{total_length_mm}mm",
-                        ppi=ppi,
-                        preferred=preferred,
-                    )
-                except ValueError:
-                    print(f"  {effective_paper_name} + {card_size}: no valid layout in either orientation, skipping")
-                    continue
+                    reg = config.defaults.registration
+                    ppi = config.ppi
+                    total_length_mm = size_convert.size_to_mm(reg.length) + page_manager.REG_PADDING_MM
 
-                best_count = len(best_computed.x_pos) * len(best_computed.y_pos)
-                num_cols = len(best_computed.x_pos)
-                num_rows = len(best_computed.y_pos)
-
-                if not borderless:
-                    if existing:
-                        if (best_orientation != layout_def.orientation
-                                or num_cols != layout_def.num_cols
-                                or num_rows != layout_def.num_rows):
-                            version += 1
-                            updated += 1
-                        raw_config["layouts"][paper_size][card_size]["orientation"] = best_orientation.value
-                        raw_config["layouts"][paper_size][card_size]["version"] = version
+                    # Use appropriate inset for variant
+                    if variant == "borderless":
+                        template_inset = config.defaults.borderless_registration_inset
                     else:
-                        # Add new layout entry
-                        if paper_size not in raw_config["layouts"]:
-                            raw_config["layouts"][paper_size] = {}
-                        raw_config["layouts"][paper_size][card_size] = {
-                            "orientation": best_orientation.value,
-                            "version": version,
-                        }
-                        added += 1
+                        template_inset = reg.inset
 
-                    raw_config["layouts"][paper_size][card_size]["num_rows"] = num_rows
-                    raw_config["layouts"][paper_size][card_size]["num_cols"] = num_cols
-                    raw_config["layouts"][paper_size][card_size]["registration"] = {"length": f"{best_computed.max_length_mm}mm"}
+                    version = layout_def.version
 
-                name = template_name(effective_paper_name, card_size, version)
-                output_file = out / f"{name}.dxf"
+                    # Non-square cards: prefer landscape page so cards sit portrait.
+                    # Square cards: prefer portrait page (card looks the same either way).
+                    card_w_px = size_convert.size_to_pixel(card_def.width, ppi)
+                    card_h_px = size_convert.size_to_pixel(card_def.height, ppi)
+                    preferred = (
+                        Orientation.PORTRAIT if card_w_px == card_h_px
+                        else Orientation.LANDSCAPE
+                    )
 
-                dxf_manager.generate_dxf(
-                    card_def.width, card_def.height, card_def.radius or config.defaults.card_radius,
-                    best_computed.x_pos, best_computed.y_pos, ppi,
-                    output_path=str(output_file),
-                )
+                    try:
+                        best_orientation, best_computed = find_best_orientation(
+                            OrientationMode.OPTIMIZE,
+                            card_def.width,
+                            card_def.height,
+                            paper_def.width,
+                            paper_def.height,
+                            inset=template_inset,
+                            length=f"{total_length_mm}mm",
+                            ppi=ppi,
+                            preferred=preferred,
+                        )
+                    except ValueError:
+                        print(f"  {paper_size} + {card_size} ({variant}): no valid layout in either orientation, skipping")
+                        continue
 
-                change_note = ""
-                if not borderless:
-                    if existing and best_orientation != layout_def.orientation:
+                    best_count = len(best_computed.x_pos) * len(best_computed.y_pos)
+                    num_cols = len(best_computed.x_pos)
+                    num_rows = len(best_computed.y_pos)
+
+                    # Check if orientation or layout changed
+                    if (best_orientation != layout_def.orientation
+                            or num_cols != layout_def.num_cols
+                            or num_rows != layout_def.num_rows):
+                        version += 1
+                        updated += 1
+
+                    # Update layout definition
+                    raw_config["layouts"][paper_size][card_size][variant]["orientation"] = best_orientation.value
+                    raw_config["layouts"][paper_size][card_size][variant]["version"] = version
+                    raw_config["layouts"][paper_size][card_size][variant]["num_rows"] = num_rows
+                    raw_config["layouts"][paper_size][card_size][variant]["num_cols"] = num_cols
+                    raw_config["layouts"][paper_size][card_size][variant]["registration"] = {"length": f"{best_computed.max_length_mm}mm"}
+
+                    name = template_name(paper_size, card_size, variant, version)
+                    output_file = out / f"{name}.dxf"
+
+                    dxf_manager.generate_dxf(
+                        card_def.width, card_def.height, card_def.radius or config.defaults.card_radius,
+                        best_computed.x_pos, best_computed.y_pos, ppi,
+                        output_path=str(output_file),
+                    )
+
+                    change_note = ""
+                    if best_orientation != layout_def.orientation:
                         change_note = f" (was {layout_def.orientation.value})"
-                    elif not existing:
-                        change_note = " (new)"
-                media_info = f", media_size={paper_def.width}x{paper_def.height}" if borderless else ""
-                print(f"  {effective_paper_name} + {card_size}: {num_cols}x{num_rows} ({best_count} cards), max_length={best_computed.max_length_mm}mm{media_info} -> {output_file}{change_note}")
-                generated += 1
 
-            except Exception as e:
-                print(f"  Error: {effective_paper_name} + {card_size}: {e}")
-                error_list.append((f"{effective_paper_name} + {card_size}", e))
-                errors += 1
+                    print(f"  {paper_size} + {card_size} ({variant}): {num_cols}x{num_rows} ({best_count} cards), max_length={best_computed.max_length_mm}mm -> {output_file}{change_note}")
+                    generated += 1
+
+                except Exception as e:
+                    print(f"  Error: {paper_size} + {card_size} ({variant}): {e}")
+                    error_list.append((f"{paper_size} + {card_size} ({variant})", e))
+                    errors += 1
 
     if error_list:
         print(f'Errors: {error_list}')
 
-    if not borderless:
-        with open(LAYOUTS_PATH, 'w') as f:
-            json.dump(raw_config, f, indent=4)
-            f.write('\n')
+    with open(LAYOUTS_PATH, 'w') as f:
+        json.dump(raw_config, f, indent=4)
+        f.write('\n')
 
     print()
     summary = f"Generated {generated} DXF files ({errors} errors)"
