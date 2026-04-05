@@ -4,7 +4,7 @@ Generate DXF cutting templates for all or specific paper/card size combinations.
 
 Reads card and paper sizes from assets/layouts.json and computes card
 positions dynamically using page_manager. Outputs DXF files to
-cutting_templates/dxf/.
+cutting_templates/dxf/{variant}/ where variant is "normal" or "borderless".
 
 Usage:
     python generate_dxf.py --all
@@ -79,7 +79,11 @@ def generate_single_dxf(
     num_rows = len(y_pos)
 
     name = template_name(paper_size, card_size, variant, version)
-    output_file = output_dir / f"{name}.dxf"
+
+    # Output to variant-specific subdirectory
+    variant_dir = output_dir / variant
+    variant_dir.mkdir(parents=True, exist_ok=True)
+    output_file = variant_dir / f"{name}.dxf"
 
     dxf_manager.generate_dxf(
         card_def.width,
@@ -92,7 +96,7 @@ def generate_single_dxf(
     )
 
     num_cards = num_cols * num_rows
-    print(f"  {paper_size} + {card_size}: {num_cols}x{num_rows} ({num_cards} cards), max_length={computed.max_length_mm}mm -> {output_file}")
+    print(f"  {paper_size} + {card_size} ({variant}): {num_cols}x{num_rows} ({num_cards} cards), max_length={computed.max_length_mm}mm -> {output_file}")
     return num_cols, num_rows, computed.max_length_mm
 
 
@@ -259,7 +263,11 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
             version = card_variants[variant].version
 
     name = template_name(paper_label, card_label, variant, version)
-    output_file = out / f"{name}.dxf"
+
+    # Output to variant-specific subdirectory
+    variant_dir = out / variant
+    variant_dir.mkdir(parents=True, exist_ok=True)
+    output_file = variant_dir / f"{name}.dxf"
 
     reg = config.defaults.registration
     ppi = config.ppi
@@ -303,7 +311,7 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
     )
 
     num_cards = num_cols * num_rows
-    print(f"  {paper_label} + {card_label}: {num_cols}x{num_rows} ({num_cards} cards), max_length={computed.max_length_mm}mm -> {output_file}")
+    print(f"  {paper_label} + {card_label} ({variant}): {num_cols}x{num_rows} ({num_cards} cards), max_length={computed.max_length_mm}mm -> {output_file}")
 
     if save:
         with open(LAYOUTS_PATH, 'r') as f:
@@ -443,7 +451,11 @@ def generate_all_optimized(config: LayoutConfig, out: Path):
                     raw_config["layouts"][paper_size][card_size][variant]["registration"] = {"length": f"{best_computed.max_length_mm}mm"}
 
                     name = template_name(paper_size, card_size, variant, version)
-                    output_file = out / f"{name}.dxf"
+
+                    # Output to variant-specific subdirectory
+                    variant_dir = out / variant
+                    variant_dir.mkdir(parents=True, exist_ok=True)
+                    output_file = variant_dir / f"{name}.dxf"
 
                     dxf_manager.generate_dxf(
                         card_def.width, card_def.height, card_def.radius or config.defaults.card_radius,
