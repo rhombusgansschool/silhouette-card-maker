@@ -20,11 +20,12 @@ import click
 import page_manager
 import dxf_manager
 import size_convert
-from enums import Orientation, OrientationMode
+from enums import Orientation, OrientationMode, Variant
 from utilities import LayoutConfig, load_layout_config, template_name, resolve_card_size_alias, resolve_paper_size_alias, get_all_card_size_names, get_all_paper_size_names, find_best_orientation
 
-OUTPUT_DIR = Path("cutting_templates") / "dxf"
-LAYOUTS_PATH = Path("assets") / "layouts.json"
+SCRIPT_DIR = Path(__file__).parent
+OUTPUT_DIR = SCRIPT_DIR / "cutting_templates" / "dxf"
+LAYOUTS_PATH = SCRIPT_DIR / "assets" / "layouts.json"
 
 layout_config = load_layout_config()
 card_size_choices = get_all_card_size_names(layout_config)
@@ -34,26 +35,27 @@ paper_size_choices = get_all_paper_size_names(layout_config)
 def generate_single_dxf(
     card_size: str,
     paper_size: str,
-    variant: str,
+    variant: str | Variant,
     config: LayoutConfig,
     output_dir: Path,
 ) -> tuple[int, int, float]:
     """Generate a single DXF file for a paper/card/variant combination.
 
     Args:
-        variant: "default" or "borderless"
+        variant: Variant enum or string ("default" or "borderless")
 
     Returns:
         (num_cols, num_rows, max_length_mm) tuple.
     """
+    variant_str = variant.value if isinstance(variant, Variant) else variant
     card_def = config.card_sizes[card_size]
     paper_def = config.paper_sizes[paper_size]
-    layout_def = config.layouts[paper_size][card_size][variant]
+    layout_def = config.layouts[paper_size][card_size][variant_str]
     reg = config.defaults.registration
     ppi = config.ppi
 
     # Use borderless inset for borderless variant
-    if variant == "borderless":
+    if variant_str == Variant.BORDERLESS.value:
         template_inset = config.defaults.borderless_registration_inset
     else:
         template_inset = reg.inset
@@ -78,10 +80,10 @@ def generate_single_dxf(
     num_cols = len(x_pos)
     num_rows = len(y_pos)
 
-    name = template_name(paper_size, card_size, variant, version)
+    name = template_name(paper_size, card_size, variant_str, version)
 
     # Output to variant-specific subdirectory
-    variant_dir = output_dir / variant
+    variant_dir = output_dir / variant_str
     variant_dir.mkdir(parents=True, exist_ok=True)
     output_file = variant_dir / f"{name}.dxf"
 
@@ -96,7 +98,7 @@ def generate_single_dxf(
     )
 
     num_cards = num_cols * num_rows
-    print(f"  {paper_size} + {card_size} ({variant}): {num_cols}x{num_rows} ({num_cards} cards), max_length={computed.max_length_mm}mm -> {output_file}")
+    print(f"  {paper_size} + {card_size} ({variant_str}): {num_cols}x{num_rows} ({num_cards} cards), max_length={computed.max_length_mm}mm -> {output_file}")
     return num_cols, num_rows, computed.max_length_mm
 
 
@@ -400,7 +402,7 @@ def generate_all_optimized(config: LayoutConfig, out: Path):
                     total_length_mm = size_convert.size_to_mm(reg.length) + page_manager.REG_PADDING_MM
 
                     # Use appropriate inset for variant
-                    if variant == "borderless":
+                    if variant == Variant.BORDERLESS.value:
                         template_inset = config.defaults.borderless_registration_inset
                     else:
                         template_inset = reg.inset

@@ -16,13 +16,15 @@ from pydantic import BaseModel, model_validator
 
 import page_manager
 import size_convert
-from enums import Registration, Orientation, OrientationMode
+from enums import Registration, Orientation, OrientationMode, Variant
 
 # Specify directory locations
-asset_directory = 'assets'
+# Use Path(__file__).parent to ensure paths work regardless of where script is run from
+SCRIPT_DIR = Path(__file__).parent
+asset_directory = SCRIPT_DIR / 'assets'
 
 layouts_filename = 'layouts.json'
-layouts_path = os.path.join(asset_directory, layouts_filename)
+layouts_path = asset_directory / layouts_filename
 
 # Specify valid mimetypes for images
 # List can be found here: https://github.com/h2non/filetype.py?tab=readme-ov-file#image
@@ -190,18 +192,25 @@ def get_all_specialty_layout_names(layout_config: LayoutConfig) -> List[str]:
     return sorted(layout_config.specialty_layouts.keys())
 
 
-def template_name(paper_size: str, card_size: str, variant: str, version: int) -> str:
+def template_name(paper_size: str, card_size: str, variant: str | Variant, version: int) -> str:
     """Compose the standard template name: {paper_size}-{card_size}-{variant}-v{version}.
 
     Note: 'default' variant is omitted from the name for backwards compatibility.
     Examples:
         - default: letter-bridge-v4
         - borderless: letter-bridge-borderless-v1
+
+    Args:
+        paper_size: Paper size key (e.g. "letter").
+        card_size: Card size key (e.g. "poker").
+        variant: Variant enum or string ("default" or "borderless").
+        version: Version number.
     """
-    if variant == "default":
+    variant_str = variant.value if isinstance(variant, Variant) else variant
+    if variant_str == "default":
         return f"{paper_size}-{card_size}-v{version}"
     else:
-        return f"{paper_size}-{card_size}-{variant}-v{version}"
+        return f"{paper_size}-{card_size}-{variant_str}-v{version}"
 
 
 # Known junk files across OSes

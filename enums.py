@@ -17,3 +17,9 @@ class OrientationMode(str, Enum):
     OPTIMIZE = "optimize"
     LANDSCAPE = Orientation.LANDSCAPE.value
     PORTRAIT = Orientation.PORTRAIT.value
+
+
+class Variant(str, Enum):
+    """Template variant types."""
+    DEFAULT = "default"
+    BORDERLESS = "borderless"

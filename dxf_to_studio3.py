@@ -32,7 +32,7 @@ from enum import Enum
 
 import click
 
-from enums import Orientation
+from enums import Orientation, Variant
 from utilities import load_layout_config, get_all_paper_size_names, resolve_paper_size_alias, LayoutConfig, template_name
 import size_convert
 
@@ -753,14 +753,15 @@ CALIBRATION_ELEMENTS = [
 # Batch Conversion Helpers
 # =============================================================================
 
-def parse_dxf_filename(filename: str, config: LayoutConfig) -> tuple[str, str] | None:
-    """Extract paper_size and card_size from a DXF filename.
+def parse_dxf_filename(filename: str, config: LayoutConfig) -> tuple[str, str, Variant] | None:
+    """Extract paper_size, card_size, and variant from a DXF filename.
 
-    Expected format: {paper_size}-{card_size}-v{N}.dxf
+    Expected formats:
+      - {paper_size}-{card_size}-v{N}.dxf (default variant)
+      - {paper_size}-{card_size}-borderless-v{N}.dxf (borderless variant)
+
     Card sizes may contain underscores (e.g. poker_half, bridge_square).
-    Splits on the first hyphen to separate paper_size from the rest,
-    then strips the version suffix and checks if the remainder is a
-    known card size.
+    Returns (paper_size, card_size, variant) or None if parsing fails.
     """
     stem = Path(filename).stem
 
@@ -768,9 +769,21 @@ def parse_dxf_filename(filename: str, config: LayoutConfig) -> tuple[str, str] |
         if stem.startswith(paper_size + "-"):
             remainder = stem[len(paper_size) + 1:]
             # Strip version suffix (-v1, -v2, etc.)
-            card_size = re.sub(r"-v\d+$", "", remainder)
-            if paper_size in config.layouts and card_size in config.layouts[paper_size]:
-                return paper_size, card_size
+            remainder_no_version = re.sub(r"-v\d+$", "", remainder)
+
+            # Check for borderless variant
+            if remainder_no_version.endswith("-borderless"):
+                card_size = remainder_no_version[:-len("-borderless")]
+                variant = Variant.BORDERLESS
+            else:
+                card_size = remainder_no_version
+                variant = Variant.DEFAULT
+
+            # Verify the layout exists
+            if (paper_size in config.layouts and
+                card_size in config.layouts[paper_size] and
+                variant.value in config.layouts[paper_size][card_size]):
+                return paper_size, card_size, variant
 
     return None
 
@@ -788,31 +801,32 @@ def get_paper_dimensions(paper_size: str | None, config: LayoutConfig) -> tuple[
     return paper_def.width, paper_def.height
 
 
-def get_orientation_for_dxf(paper_size: str | None, card_size: str | None, config: LayoutConfig) -> Orientation:
-    """Look up the paper orientation for a paper/card size pair from layouts.json.
+def get_orientation_for_dxf(paper_size: str | None, card_size: str | None, variant: Variant | None, config: LayoutConfig) -> Orientation:
+    """Look up the paper orientation for a paper/card/variant combination from layouts.json.
 
-    Falls back to landscape if either size is None.
+    Falls back to landscape if any parameter is None.
     """
-    if paper_size is not None and card_size is not None:
-        return config.layouts[paper_size][card_size].orientation
+    if paper_size is not None and card_size is not None and variant is not None:
+        return config.layouts[paper_size][card_size][variant.value].orientation
 
     return Orientation.LANDSCAPE
 
 
-def get_max_length_for_dxf(paper_size: str | None, card_size: str | None, config: LayoutConfig, unit: str) -> float | None:
-    """Look up the max registration mark length for a paper/card size pair.
+def get_max_length_for_dxf(paper_size: str | None, card_size: str | None, variant: Variant | None, config: LayoutConfig, unit: str) -> float | None:
+    """Look up the max registration mark length for a paper/card/variant combination.
 
     Args:
         paper_size: Paper size key (e.g. "letter"), or None.
         card_size: Card size key (e.g. "poker"), or None.
+        variant: Variant enum (Variant.DEFAULT or Variant.BORDERLESS), or None.
         config: Loaded layout config.
         unit: "mm" or "in".
 
     Returns:
         Max length in the requested unit, or None if not available.
     """
-    if paper_size is not None and card_size is not None:
-        layout_reg = config.layouts[paper_size][card_size].registration
+    if paper_size is not None and card_size is not None and variant is not None:
+        layout_reg = config.layouts[paper_size][card_size][variant.value].registration
         mm = size_convert.size_to_mm(layout_reg.length) if layout_reg is not None and layout_reg.length is not None else None
         if mm is None:
             return None
@@ -1027,18 +1041,24 @@ def batch(dxf_dir_path, output_dir_path, unit, studio_path, action_delay, calibr
         # Derive expected DXF/studio3 filenames from layouts.json
         dxf_files = []
         for ps, cards in config.layouts.items():
-            for cs, layout_def in cards.items():
-                name = template_name(ps, cs, layout_def.version)
-                studio3_file = out_path / f"{name}.studio3"
-                if not studio3_file.exists():
-                    dxf_file = dxf_path / f"{name}.dxf"
-                    if dxf_file.exists():
-                        dxf_files.append(dxf_file)
+            for cs, variants in cards.items():
+                for var, layout_def in variants.items():
+                    name = template_name(ps, cs, var, layout_def.version)
+                    # Borderless templates go in borderless/ subdirectory
+                    if var == Variant.BORDERLESS.value:
+                        studio3_file = out_path / "borderless" / f"{name}.studio3"
                     else:
-                        click.echo(f"  Warning: missing DXF {dxf_file.name} for {ps} + {cs}")
+                        studio3_file = out_path / f"{name}.studio3"
+                    if not studio3_file.exists():
+                        dxf_file = dxf_path / var / f"{name}.dxf"
+                        if dxf_file.exists():
+                            dxf_files.append(dxf_file)
+                        else:
+                            click.echo(f"  Warning: missing DXF {dxf_file.name} for {ps} + {cs} + {var}")
         dxf_files.sort()
     else:
-        dxf_files = sorted(dxf_path.glob("*.dxf"))
+        # Search both default and borderless subdirectories
+        dxf_files = sorted(list((dxf_path / Variant.DEFAULT.value).glob("*.dxf")) + list((dxf_path / Variant.BORDERLESS.value).glob("*.dxf")))
 
     if not dxf_files:
         if generate_new:
@@ -1053,11 +1073,15 @@ def batch(dxf_dir_path, output_dir_path, unit, studio_path, action_delay, calibr
 
     if dry_run:
         for dxf_file in dxf_files:
-            output_file = out_path / dxf_file.with_suffix(".studio3").name
-            paper_size, card_size = parse_dxf_filename(dxf_file.name, config) or (None, None)
-            orientation = get_orientation_for_dxf(paper_size, card_size, config)
+            paper_size, card_size, variant = parse_dxf_filename(dxf_file.name, config) or (None, None, None)
+            # Borderless templates go in borderless/ subdirectory
+            if variant == Variant.BORDERLESS:
+                output_file = out_path / "borderless" / dxf_file.with_suffix(".studio3").name
+            else:
+                output_file = out_path / dxf_file.with_suffix(".studio3").name
+            orientation = get_orientation_for_dxf(paper_size, card_size, variant, config)
             paper_w, paper_h = get_paper_dimensions(paper_size, config)
-            max_len = get_max_length_for_dxf(paper_size, card_size, config, unit)
+            max_len = get_max_length_for_dxf(paper_size, card_size, variant, config, unit)
             len_str = f", max_length={max_len}{unit}" if max_len is not None else ""
             click.echo(f"  {dxf_file.name} -> {output_file.name} ({orientation.value}, {paper_w} x {paper_h}{len_str})")
         click.echo()
@@ -1086,11 +1110,16 @@ def batch(dxf_dir_path, output_dir_path, unit, studio_path, action_delay, calibr
         errors = 0
 
         for dxf_file in dxf_files:
-            output_file = out_path / dxf_file.with_suffix(".studio3").name
-            paper_size, card_size = parse_dxf_filename(dxf_file.name, config) or (None, None)
-            orientation = get_orientation_for_dxf(paper_size, card_size, config)
+            paper_size, card_size, variant = parse_dxf_filename(dxf_file.name, config) or (None, None, None)
+            # Borderless templates go in borderless/ subdirectory
+            if variant == Variant.BORDERLESS:
+                output_file = out_path / "borderless" / dxf_file.with_suffix(".studio3").name
+                (out_path / "borderless").mkdir(parents=True, exist_ok=True)
+            else:
+                output_file = out_path / dxf_file.with_suffix(".studio3").name
+            orientation = get_orientation_for_dxf(paper_size, card_size, variant, config)
             paper_w, paper_h = get_paper_dimensions(paper_size, config)
-            max_len = get_max_length_for_dxf(paper_size, card_size, config, unit)
+            max_len = get_max_length_for_dxf(paper_size, card_size, variant, config, unit)
 
             # Registration marks: always enabled, thickness=100,
             # length set to the computed max for this layout.
