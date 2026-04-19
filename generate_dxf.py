@@ -4,7 +4,7 @@ Generate DXF cutting templates for all or specific paper/card size combinations.
 
 Reads card and paper sizes from assets/layouts.json and computes card
 positions dynamically using page_manager. Outputs DXF files to
-cutting_templates/dxf/{variant}/ where variant is "normal" or "borderless".
+cutting_templates/dxf/{variant}/ where variant is "default" or "borderless".
 
 Usage:
     python generate_dxf.py --all
@@ -41,7 +41,7 @@ def generate_single_dxf(
     """Generate a single DXF file for a paper/card/variant combination.
 
     Args:
-        variant: "normal" or "borderless"
+        variant: "default" or "borderless"
 
     Returns:
         (num_cols, num_rows, max_length_mm) tuple.
@@ -251,8 +251,8 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
         paper_label = paper_name
 
     # Determine version and variant for the output filename
-    # For custom paper/card sizes, use "normal" variant
-    variant = "normal"
+    # For custom paper/card sizes, use "default" variant
+    variant = "default"
     version = 1
 
     # Try to look up existing layout definition

@@ -193,12 +193,12 @@ def get_all_specialty_layout_names(layout_config: LayoutConfig) -> List[str]:
 def template_name(paper_size: str, card_size: str, variant: str, version: int) -> str:
     """Compose the standard template name: {paper_size}-{card_size}-{variant}-v{version}.
 
-    Note: 'normal' variant is omitted from the name for backwards compatibility.
+    Note: 'default' variant is omitted from the name for backwards compatibility.
     Examples:
-        - normal: letter-bridge-v4
+        - default: letter-bridge-v4
         - borderless: letter-bridge-borderless-v1
     """
-    if variant == "normal":
+    if variant == "default":
         return f"{paper_size}-{card_size}-v{version}"
     else:
         return f"{paper_size}-{card_size}-{variant}-v{version}"
@@ -865,7 +865,7 @@ def generate_pdf(
         paper_size_def = layout_config.paper_sizes[paper_size]
 
         # Select variant based on borderless flag
-        variant = "borderless" if borderless else "normal"
+        variant = "borderless" if borderless else "default"
 
         # Look up layout from nested structure: layouts[paper][card][variant]
         if paper_size not in layout_config.layouts or card_size not in layout_config.layouts[paper_size]:
