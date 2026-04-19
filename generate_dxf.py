@@ -82,8 +82,11 @@ def generate_single_dxf(
 
     name = template_name(paper_size, card_size, variant_str, version)
 
-    # Output to variant-specific subdirectory
-    variant_dir = output_dir / variant_str
+    # Determine output directory based on variant
+    if variant_str == Variant.BORDERLESS.value:
+        variant_dir = output_dir.parent / "borderless" / "dxf"
+    else:
+        variant_dir = output_dir
     variant_dir.mkdir(parents=True, exist_ok=True)
     output_file = variant_dir / f"{name}.dxf"
 
@@ -266,8 +269,11 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
 
     name = template_name(paper_label, card_label, variant, version)
 
-    # Output to variant-specific subdirectory
-    variant_dir = out / variant
+    # Determine output directory based on variant
+    if variant == "borderless":
+        variant_dir = out.parent / "borderless" / "dxf"
+    else:
+        variant_dir = out
     variant_dir.mkdir(parents=True, exist_ok=True)
     output_file = variant_dir / f"{name}.dxf"
 
@@ -454,8 +460,11 @@ def generate_all_optimized(config: LayoutConfig, out: Path):
 
                     name = template_name(paper_size, card_size, variant, version)
 
-                    # Output to variant-specific subdirectory
-                    variant_dir = out / variant
+                    # Determine output directory based on variant
+                    if variant == Variant.BORDERLESS.value:
+                        variant_dir = out.parent / "borderless" / "dxf"
+                    else:
+                        variant_dir = out
                     variant_dir.mkdir(parents=True, exist_ok=True)
                     output_file = variant_dir / f"{name}.dxf"
 

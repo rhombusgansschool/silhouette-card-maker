@@ -1047,18 +1047,19 @@ def batch(dxf_dir_path, output_dir_path, unit, studio_path, action_delay, calibr
                     # Borderless templates go in borderless/ subdirectory
                     if var == Variant.BORDERLESS.value:
                         studio3_file = out_path / "borderless" / f"{name}.studio3"
+                        dxf_file = out_path / "borderless" / "dxf" / f"{name}.dxf"
                     else:
                         studio3_file = out_path / f"{name}.studio3"
+                        dxf_file = dxf_path / f"{name}.dxf"
                     if not studio3_file.exists():
-                        dxf_file = dxf_path / var / f"{name}.dxf"
                         if dxf_file.exists():
                             dxf_files.append(dxf_file)
                         else:
                             click.echo(f"  Warning: missing DXF {dxf_file.name} for {ps} + {cs} + {var}")
         dxf_files.sort()
     else:
-        # Search both default and borderless subdirectories
-        dxf_files = sorted(list((dxf_path / Variant.DEFAULT.value).glob("*.dxf")) + list((dxf_path / Variant.BORDERLESS.value).glob("*.dxf")))
+        # Search both default and borderless DXF directories
+        dxf_files = sorted(list(dxf_path.glob("*.dxf")) + list((out_path / "borderless" / "dxf").glob("*.dxf")))
 
     if not dxf_files:
         if generate_new:
