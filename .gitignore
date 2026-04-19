@@ -22,8 +22,10 @@ test/*/output/*
 !test/*/output/README.md
 
 # DXF files are generated artifacts, only commit .studio3 files
-cutting_templates/dxf/default/
-cutting_templates/dxf/borderless/
+cutting_templates/dxf/default/*
+!cutting_templates/dxf/default/README.md
+cutting_templates/dxf/borderless/*
+!cutting_templates/dxf/borderless/README.md
 
 hugo/public/
 .vscode/launch.json
