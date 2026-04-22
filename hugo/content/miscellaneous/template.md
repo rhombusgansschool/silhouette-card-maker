@@ -30,34 +30,42 @@ A layout entry looks like this:
 }
 ```
 
-You may edit the JSON manually or let `generate_dxf.py` edit it for you by using the `--save` flag. 
+You may edit the JSON manually or let `generate_dxf.py` edit it for you by using the `--save` flag with the `single` command.
 
-For example, to create a new card size, use the `--card_width`, `--card_length`, `--card_name`, and `--save` options. Use `--card_radius` to set the corner radius (defaults to `3mm`).
-
-```sh
-python generate_dxf.py --card_width 1.75in --card_length 3.5in --card_name domino --paper_size letter --save
-```
-
-To create a new paper size, use the `--paper_width`, `--paper_length`, `--paper_name`, and `--save` options.
+For example, to create a new card size, use `--card_width`, `--card_height`, `--card_name`, and `--save` options:
 
 ```sh
-python generate_dxf.py --card_size standard --paper_width 11in --paper_length 8.5in --paper_name letter --save
+python generate_dxf.py single output.dxf --card_width 1.75in --card_height 3.5in --card_name domino --paper_size letter --save
 ```
 
-Both metric (`mm`) and imperial (`in`) units are accepted. This generates the DXF and saves the new card size, paper size, and layout entry to `layouts.json` automatically.
+To create a new paper size, use `--paper_width`, `--paper_height`, `--paper_name`, and `--save` options:
+
+```sh
+python generate_dxf.py single output.dxf --card_size standard --paper_width 11in --paper_height 8.5in --paper_name letter --save
+```
+
+Both metric (`mm`) and imperial (`in`) units are accepted. This generates the DXF to the specified output path and saves the new card size, paper size, and layout entry to `layouts.json` automatically.
 
 ## Generate DXF files
 
-Once the size is in `layouts.json`, generate DXFs for all new paper and card combinations:
+Once the size is in `layouts.json`, use the `batch` command to generate DXF files.
+
+Generate only missing templates:
 
 ```sh
-python generate_dxf.py --new
+python generate_dxf.py batch --new
 ```
 
-Or regenerate everything:
+Regenerate all templates:
 
 ```sh
-python generate_dxf.py --all
+python generate_dxf.py batch --all
+```
+
+Optimize orientations for maximum cards per sheet:
+
+```sh
+python generate_dxf.py batch --optimize
 ```
 
 DXF files are written to:

@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
 """
-Generate DXF cutting templates for all or specific paper/card size combinations.
+Generate DXF cutting templates for paper/card size combinations.
 
 Reads card and paper sizes from assets/layouts.json and computes card
-positions dynamically using page_manager. Outputs DXF files to
-cutting_templates/dxf/{variant}/ where variant is "default" or "borderless".
+positions dynamically using page_manager. Batch operations output to:
+- cutting_templates/dxf/ (default variant)
+- cutting_templates/borderless/dxf/ (borderless variant)
 
 Usage:
-    python generate_dxf.py --all
-    python generate_dxf.py --paper_size letter --card_size poker
-    python generate_dxf.py --list
+    # Batch generation (uses standard directory structure)
+    python generate_dxf.py batch --all
+    python generate_dxf.py batch --new
+    python generate_dxf.py batch --optimize
+
+    # Single file generation (custom output path)
+    python generate_dxf.py single output.dxf --card_size poker --paper_size letter
+
+    # List available sizes
+    python generate_dxf.py list
 """
 
 import json
@@ -106,13 +114,16 @@ def generate_single_dxf(
     return num_cols, num_rows, computed.max_length_mm
 
 
-@click.command()
+@click.group()
+def cli():
+    """Generate DXF cutting templates from layouts.json."""
+    pass
 
-# Predefined paper/card sizes from layouts.json
+
+@cli.command()
+@click.argument("output_file", type=click.Path())
 @click.option("--card_size", type=click.Choice(card_size_choices, case_sensitive=False), help="Card size. Cannot be combined with --card_height/--card_width.")
 @click.option("--paper_size", type=click.Choice(paper_size_choices, case_sensitive=False), help="Paper size. Cannot be combined with --paper_height/--paper_width.")
-
-# For defining paper/card sizes directly instead of using predefined ones from layouts.json
 @click.option("--card_height", type=str, default=None, help="Card length (height) as a size string (e.g. '88mm', '3.5in'). Requires --card_width. Cannot be combined with --card_size.")
 @click.option("--card_width", type=str, default=None, help="Card width as a size string (e.g. '63mm', '2.5in'). Requires --card_height. Cannot be combined with --card_size.")
 @click.option("--card_radius", type=str, default=None, help="Card corner radius as a size string (e.g. '3mm'). Overrides the default radius for the card size. Defaults to 3mm when using --card_height/--card_width.")
@@ -120,75 +131,15 @@ def generate_single_dxf(
 @click.option("--paper_height", type=str, default=None, help="Paper length (longer dimension) as a size string (e.g. '11in', '297mm'). Requires --paper_width. Cannot be combined with --paper_size.")
 @click.option("--paper_width", type=str, default=None, help="Paper width (shorter dimension) as a size string (e.g. '8.5in', '210mm'). Requires --paper_height. Cannot be combined with --paper_size.")
 @click.option("--paper_name", type=str, default=None, help="Override the paper label used for the output filename and --save.")
-@click.option("--save", "save", is_flag=True, help="Save new card/paper sizes and layout combination to assets/layouts.json.")
-
-# Batch generation options
-@click.option("--all", "generate_all", is_flag=True, help="Generate DXF files for all paper/card combinations defined in layouts.json.")
-@click.option("--all_optimize", "optimize_all", is_flag=True, help="Generate DXF files for all combinations, optimizing orientation for maximum cards. Updates layouts.json if a better orientation is found.")
-@click.option("--new", "generate_new", is_flag=True, help="Generate DXF files only for new paper and card combinations.")
-
+@click.option("--variant", type=click.Choice(["default", "borderless"], case_sensitive=False), default="default", show_default=True, help="Template variant.")
 @click.option("--orientation", type=click.Choice([e.value for e in OrientationMode], case_sensitive=False), default=OrientationMode.OPTIMIZE.value, show_default=True, help="Page orientation: optimize (auto-select), landscape, or portrait.")
-@click.option("--output_dir_path", type=click.Path(), default=str(OUTPUT_DIR), show_default=True, help="Output directory for DXF files.")
-def cli(paper_size, card_size, card_height, card_width, card_radius, paper_height, paper_width, card_name, paper_name, save, generate_all, generate_new, optimize_all, orientation, output_dir_path):
-    """Generate DXF cutting templates from layouts.json."""
+@click.option("--save", is_flag=True, help="Save new card/paper sizes and layout combination to assets/layouts.json.")
+def single(output_file, paper_size, card_size, card_height, card_width, card_radius, paper_height, paper_width, card_name, paper_name, variant, orientation, save):
+    """Generate a single DXF file with full control over output path."""
     config = load_layout_config()
 
-    out = Path(output_dir_path)
-    out.mkdir(parents=True, exist_ok=True)
-
-    # Track whether user specified custom output dir (for variant subdirectory logic)
-    using_default_output = str(OUTPUT_DIR) == output_dir_path
-
-    if optimize_all:
-        generate_all_optimized(config, out, using_default_output)
-        return
-
-    if generate_all or generate_new:
-        with open(LAYOUTS_PATH, 'r') as f:
-            raw_config = json.load(f)
-
-        generated = 0
-        skipped = 0
-        errors = 0
-        error_list = []
-        print(f"Generating DXF files to: {out}")
-        print()
-
-        # Iterate over all paper/card/variant combinations
-        for ps, cards in config.layouts.items():
-            for cs, variants in cards.items():
-                for variant, layout_def in variants.items():
-                    name = template_name(ps, cs, variant, layout_def.version)
-                    output_file = out / f"{name}.dxf"
-
-                    if generate_new and output_file.exists():
-                        skipped += 1
-                        continue
-
-                    try:
-                        num_cols, num_rows, ml_mm = generate_single_dxf(cs, ps, variant, config, out, use_variant_subdirs=using_default_output)
-                        raw_config["layouts"][ps][cs][variant]["num_rows"] = num_rows
-                        raw_config["layouts"][ps][cs][variant]["num_cols"] = num_cols
-                        raw_config["layouts"][ps][cs][variant]["registration"] = {"length": f"{ml_mm}mm"}
-                        generated += 1
-                    except Exception as e:
-                        print(f"  Error: {ps} + {cs} ({variant}): {e}")
-                        error_list.append((f"{ps} + {cs} ({variant})", e))
-                        errors += 1
-
-        if error_list:
-            print(f'Errors: {error_list}')
-
-        with open(LAYOUTS_PATH, 'w') as f:
-            json.dump(raw_config, f, indent=4)
-            f.write('\n')
-
-        print()
-        summary = f"Generated {generated} DXF files ({errors} errors)"
-        if generate_new:
-            summary += f", skipped {skipped} existing"
-        print(summary)
-        return
+    output_path = Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Validate card dimension options
     has_card_size = card_size is not None
@@ -213,9 +164,9 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
         raise click.UsageError("--paper_width requires --paper_height.")
 
     if not has_card_size and not has_card_dims:
-        raise click.UsageError("Provide --card_size or (--card_height and --card_width), or use --all.")
+        raise click.UsageError("Provide --card_size or (--card_height and --card_width).")
     if not has_paper_size and not has_paper_dims:
-        raise click.UsageError("Provide --paper_size or (--paper_height and --paper_width), or use --all.")
+        raise click.UsageError("Provide --paper_size or (--paper_height and --paper_width).")
 
     # Resolve aliases
     if has_card_size:
@@ -259,9 +210,7 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
     if paper_name is not None:
         paper_label = paper_name
 
-    # Determine version and variant for the output filename
-    # For custom paper/card sizes, use "default" variant
-    variant = "default"
+    # Determine version for the output filename
     version = 1
 
     # Try to look up existing layout definition
@@ -271,17 +220,11 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
         if variant in card_variants:
             version = card_variants[variant].version
 
-    name = template_name(paper_label, card_label, variant, version)
-
-    # Determine output directory based on variant (only if using default output structure)
-    if using_default_output and variant == "borderless":
-        variant_dir = out.parent / "borderless" / "dxf"
+    # Select appropriate registration settings for variant
+    if variant == "borderless":
+        reg = config.defaults.registration.borderless
     else:
-        variant_dir = out
-    variant_dir.mkdir(parents=True, exist_ok=True)
-    output_file = variant_dir / f"{name}.dxf"
-
-    reg = config.defaults.registration
+        reg = config.defaults.registration.default
     ppi = config.ppi
 
     total_length_mm = size_convert.size_to_mm(reg.length) + page_manager.REG_PADDING_MM
@@ -319,11 +262,11 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
         x_pos,
         y_pos,
         ppi,
-        output_path=str(output_file),
+        output_path=str(output_path),
     )
 
     num_cards = num_cols * num_rows
-    print(f"  {paper_label} + {card_label} ({variant}): {num_cols}x{num_rows} ({num_cards} cards), max_length={computed.max_length_mm}mm -> {output_file}")
+    print(f"  {paper_label} + {card_label} ({variant}): {num_cols}x{num_rows} ({num_cards} cards), max_length={computed.max_length_mm}mm -> {output_path}")
 
     if save:
         with open(LAYOUTS_PATH, 'r') as f:
@@ -378,6 +321,95 @@ def cli(paper_size, card_size, card_height, card_width, card_radius, paper_heigh
             print("  No new entries to save.")
 
     print("Done!")
+
+
+@cli.command()
+@click.option("--all", "generate_all", is_flag=True, help="Generate DXF files for all paper/card/variant combinations.")
+@click.option("--new", "generate_new", is_flag=True, help="Generate DXF files only for missing templates.")
+@click.option("--optimize", "optimize_all", is_flag=True, help="Generate DXF files for all combinations, optimizing orientation for maximum cards.")
+def batch(generate_all, generate_new, optimize_all):
+    """Batch generate DXF files to cutting_templates/ directory structure."""
+    config = load_layout_config()
+    out = OUTPUT_DIR
+
+    # Validate that exactly one flag is provided
+    flags = [generate_all, generate_new, optimize_all]
+    if sum(flags) != 1:
+        raise click.UsageError("Provide exactly one of: --all, --new, or --optimize")
+
+    if optimize_all:
+        generate_all_optimized(config, out, use_variant_subdirs=True)
+        return
+
+    # --all or --new
+    with open(LAYOUTS_PATH, 'r') as f:
+        raw_config = json.load(f)
+
+    generated = 0
+    skipped = 0
+    errors = 0
+    error_list = []
+    print(f"Generating DXF files to: {out} and {out.parent / 'borderless' / 'dxf'}")
+    print()
+
+    # Iterate over all paper/card/variant combinations
+    for ps, cards in config.layouts.items():
+        for cs, variants in cards.items():
+            for variant, layout_def in variants.items():
+                name = template_name(ps, cs, variant, layout_def.version)
+
+                # Check output location based on variant
+                if variant == Variant.BORDERLESS.value:
+                    check_file = out.parent / "borderless" / "dxf" / f"{name}.dxf"
+                else:
+                    check_file = out / f"{name}.dxf"
+
+                if generate_new and check_file.exists():
+                    skipped += 1
+                    continue
+
+                try:
+                    num_cols, num_rows, ml_mm = generate_single_dxf(cs, ps, variant, config, out, use_variant_subdirs=True)
+                    raw_config["layouts"][ps][cs][variant]["num_rows"] = num_rows
+                    raw_config["layouts"][ps][cs][variant]["num_cols"] = num_cols
+                    raw_config["layouts"][ps][cs][variant]["registration"] = {"length": f"{ml_mm}mm"}
+                    generated += 1
+                except Exception as e:
+                    print(f"  Error: {ps} + {cs} ({variant}): {e}")
+                    error_list.append((f"{ps} + {cs} ({variant})", e))
+                    errors += 1
+
+    if error_list:
+        print(f'Errors: {error_list}')
+
+    with open(LAYOUTS_PATH, 'w') as f:
+        json.dump(raw_config, f, indent=4)
+        f.write('\n')
+
+    print()
+    summary = f"Generated {generated} DXF files ({errors} errors)"
+    if generate_new:
+        summary += f", skipped {skipped} existing"
+    print(summary)
+
+
+@cli.command()
+def list():
+    """List available card and paper sizes."""
+    config = load_layout_config()
+
+    print("Card sizes:")
+    for name in sorted(config.card_sizes.keys()):
+        card = config.card_sizes[name]
+        aliases = f" (aliases: {', '.join(card.aliases)})" if card.aliases else ""
+        print(f"  {name}: {card.width} x {card.height}{aliases}")
+
+    print()
+    print("Paper sizes:")
+    for name in sorted(config.paper_sizes.keys()):
+        paper = config.paper_sizes[name]
+        aliases = f" (aliases: {', '.join(paper.aliases)})" if paper.aliases else ""
+        print(f"  {name}: {paper.width} x {paper.height}{aliases}")
 
 
 def generate_all_optimized(config: LayoutConfig, out: Path, use_variant_subdirs: bool = True):
