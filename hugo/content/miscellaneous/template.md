@@ -60,7 +60,9 @@ Or regenerate everything:
 python generate_dxf.py --all
 ```
 
-DXF files are written to [`cutting_templates/dxf/`](https://github.com/Alan-Cha/silhouette-card-maker/tree/main/cutting_templates/dxf).
+DXF files are written to:
+- [`cutting_templates/dxf/`](https://github.com/Alan-Cha/silhouette-card-maker/tree/main/cutting_templates/dxf) - Default layouts with standard 10mm registration mark inset
+- `cutting_templates/borderless/dxf/` - Borderless layouts with 3mm registration mark inset for tighter spacing
 
 ## Create template
 
@@ -133,9 +135,29 @@ Silhouette Studio will open and you'll be guided through hovering over each UI e
 python dxf_to_studio3.py batch --unit mm --new
 ```
 
-`--unit` must match the unit setting in Silhouette Studio's preferences (`mm` or `in`). `--new` skips any `.studio3` files that already exist. Use `--dry_run` to preview what would be converted without launching Studio.
+The `batch` command processes all DXF files in `cutting_templates/dxf/` and `cutting_templates/borderless/dxf/`:
 
-`.studio3` files are written to `cutting_templates/`.
+- `--unit` (required): Specify `mm` or `in` to match your Silhouette Studio's unit setting. Registration mark values are automatically converted to inches internally.
+- `--new`: Only convert layouts whose `.studio3` file is missing (based on `layouts.json` versions). Omit this flag to convert all DXF files.
+- `--dry_run`: Preview what would be converted without launching Silhouette Studio.
+
+`.studio3` files are written to `cutting_templates/` (default layouts) and `cutting_templates/borderless/` (borderless layouts).
+
+**Convert a single file**
+
+For one-off conversions with custom DXF files:
+
+```sh
+python dxf_to_studio3.py convert input.dxf output.studio3 --paper_size letter --unit mm
+```
+
+The `convert` command provides full control over a single conversion:
+
+- `--paper_size`: Paper size from `layouts.json` (default: `letter`)
+- `--orientation`: `landscape` or `portrait` (default: `landscape`)
+- `--unit`: Unit for registration mark values - `mm` or `in` (default: `in`)
+- `--registration`: Enable registration marks
+- `--reg_length`, `--reg_thickness`, `--reg_inset`: Registration mark dimensions in the specified unit (default: `0` = minimum)
 
 ## Pull Request
 
