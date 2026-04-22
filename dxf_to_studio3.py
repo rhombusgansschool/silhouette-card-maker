@@ -82,39 +82,16 @@ class CuttingMat(Enum):
 class RegistrationSettings:
     """Settings for registration marks.
 
-    All numeric values must be in inches, as Silhouette Studio's page dimensions
-    are always set in inches by this script.
+    All numeric values are in the user-specified unit (mm or in).
+    Values are passed directly to Silhouette Studio in that unit.
 
     Values are clamped by Silhouette Studio to its allowed range,
     so 0 gives the minimum and any very large value gives the maximum.
     """
     enabled: bool = True
-    length: float = 0  # In inches. 0 will default to minimum allowed by Silhouette Studio
-    thickness: float = 0  # In inches. 0 will default to minimum allowed by Silhouette Studio
-    inset: float = 0  # In inches. 0 will default to minimum allowed by Silhouette Studio
-
-
-def convert_reg_settings_to_inches(settings: Optional[RegistrationSettings], from_unit: str) -> Optional[RegistrationSettings]:
-    """Convert registration settings from specified unit to inches.
-
-    Args:
-        settings: Registration settings to convert, or None.
-        from_unit: Source unit ("mm" or "in").
-
-    Returns:
-        New RegistrationSettings with values in inches, or None if input was None.
-    """
-    if settings is None or from_unit == "in":
-        return settings
-
-    # Convert from mm to inches using the same conversion factor as size_convert
-    MM_TO_IN = 1 / 25.4
-    return RegistrationSettings(
-        enabled=settings.enabled,
-        length=settings.length * MM_TO_IN if settings.length else 0,
-        thickness=settings.thickness * MM_TO_IN if settings.thickness else 0,
-        inset=settings.inset * MM_TO_IN if settings.inset else 0
-    )
+    length: float = 0  # 0 will default to minimum allowed by Silhouette Studio
+    thickness: float = 0  # 0 will default to minimum allowed by Silhouette Studio
+    inset: float = 0  # 0 will default to minimum allowed by Silhouette Studio
 
 
 def determine_cutting_mat(width_in: float, height_in: float) -> CuttingMat:
@@ -572,6 +549,7 @@ class SilhouetteAutomation:
         output_studio3: str,
         paper_width: str,
         paper_height: str,
+        unit: str,
         orientation: Orientation = Orientation.LANDSCAPE,
         center: bool = True,
         registration: Optional[RegistrationSettings] = None
@@ -590,25 +568,36 @@ class SilhouetteAutomation:
             output_studio3: Path for the output .studio3 file.
             paper_width: Paper width as a unit string (e.g. "11in", "297mm").
             paper_height: Paper height as a unit string (e.g. "8.5in", "210mm").
+            unit: Unit for all numeric values ("mm" or "in"). Must match Silhouette Studio's unit setting.
             orientation: Page orientation (portrait or landscape).
             center: Whether to center paths on the page.
-            registration: Registration mark settings, or None to skip.
+            registration: Registration mark settings in the specified unit, or None to skip.
         """
         print(f"\nConverting: {input_dxf}")
 
         self.open_file(input_dxf)
 
-        # Convert page dimensions to inches for Silhouette Studio.
+        # Convert page dimensions to the specified unit for Silhouette Studio.
         # layouts.json stores paper sizes as landscape (width > height).
         # For portrait, swap so width < height matches Silhouette Studio's expectation.
+        if unit == "mm":
+            width_value = size_convert.size_to_mm(paper_width)
+            height_value = size_convert.size_to_mm(paper_height)
+        else:  # unit == "in"
+            width_value = size_convert.size_to_in(paper_width)
+            height_value = size_convert.size_to_in(paper_height)
+
+        if orientation == Orientation.PORTRAIT:
+            width_value, height_value = height_value, width_value
+
+        # Configure page setup (mat, media size, orientation, dimensions) in one pass
+        # Note: determine_cutting_mat expects inches for mat selection
         width_in = size_convert.size_to_in(paper_width)
         height_in = size_convert.size_to_in(paper_height)
         if orientation == Orientation.PORTRAIT:
             width_in, height_in = height_in, width_in
-
-        # Configure page setup (mat, media size, orientation, dimensions) in one pass
         mat = determine_cutting_mat(width_in, height_in)
-        self.setup_page(mat, width_in, height_in, orientation)
+        self.setup_page(mat, width_value, height_value, orientation)
 
         if center:
             self.center_to_page()
@@ -901,8 +890,6 @@ def convert(input_file, output_file, paper_size, orientation, no_center, registr
             thickness=reg_thickness,
             inset=reg_inset
         )
-        # Convert registration settings to inches (paper dimensions are always in inches)
-        reg_settings = convert_reg_settings_to_inches(reg_settings, unit)
 
     # Look up page dimensions from layouts.json
     config = load_layout_config()
@@ -938,6 +925,7 @@ def convert(input_file, output_file, paper_size, orientation, no_center, registr
             output_file,
             paper_width=paper_width,
             paper_height=paper_height,
+            unit=unit,
             orientation=orient,
             center=not no_center,
             registration=reg_settings
@@ -1153,8 +1141,6 @@ def batch(unit, studio_path, action_delay, calibration_path, generate_new, dry_r
                 length=max_len if max_len is not None else 0,
                 thickness=100,
             )
-            # Convert registration settings to inches (paper dimensions are always in inches)
-            reg_settings = convert_reg_settings_to_inches(reg_settings, unit)
 
             try:
                 automation.convert(
@@ -1162,6 +1148,7 @@ def batch(unit, studio_path, action_delay, calibration_path, generate_new, dry_r
                     output_studio3=str(output_file),
                     paper_width=paper_w,
                     paper_height=paper_h,
+                    unit=unit,
                     orientation=orientation,
                     center=True,
                     registration=reg_settings,
