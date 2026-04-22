@@ -446,14 +446,8 @@ def generate_all_optimized(config: LayoutConfig, out: Path):
 
                     version = layout_def.version
 
-                    # Non-square cards: prefer landscape page so cards sit portrait.
-                    # Square cards: prefer portrait page (card looks the same either way).
-                    card_w_px = size_convert.size_to_pixel(card_def.width, ppi)
-                    card_h_px = size_convert.size_to_pixel(card_def.height, ppi)
-                    preferred = (
-                        Orientation.PORTRAIT if card_w_px == card_h_px
-                        else Orientation.LANDSCAPE
-                    )
+                    # Prefer landscape page for all cards (both square and non-square)
+                    preferred = Orientation.LANDSCAPE
 
                     try:
                         best_orientation, best_computed = find_best_orientation(
