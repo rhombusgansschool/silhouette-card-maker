@@ -127,6 +127,31 @@ def determine_cutting_mat(width_in: float, height_in: float) -> CuttingMat:
     return CuttingMat.MAT_12X24
 
 
+def adjust_paper_for_borderless(paper_width: str, paper_height: str) -> tuple[str, str]:
+    """Adjust paper dimensions for borderless templates.
+
+    Borderless templates use a 3mm inset, but Silhouette Studio's minimum is 10mm.
+    To work around this, we tell Silhouette Studio the paper is 14mm larger
+    (7mm on each side), so its 10mm inset becomes an effective 3mm inset on the
+    actual paper.
+
+    Args:
+        paper_width: Paper width as a unit string (e.g., "279.4mm", "11in").
+        paper_height: Paper height as a unit string (e.g., "215.9mm", "8.5in").
+
+    Returns:
+        (adjusted_width, adjusted_height) as unit strings with 14mm added to each dimension.
+    """
+    # Convert to mm, add 14mm, convert back to string
+    width_mm = size_convert.size_to_mm(paper_width)
+    height_mm = size_convert.size_to_mm(paper_height)
+
+    adjusted_width_mm = width_mm + 14.0
+    adjusted_height_mm = height_mm + 14.0
+
+    return f"{adjusted_width_mm}mm", f"{adjusted_height_mm}mm"
+
+
 # =============================================================================
 # Utility Functions
 # =============================================================================
@@ -1109,6 +1134,11 @@ def batch(unit, studio_path, action_delay, calibration_path, generate_new, dry_r
                 output_file = out_path / dxf_file.with_suffix(".studio3").name
             orientation = get_orientation_for_dxf(paper_size, card_size, variant, config)
             paper_w, paper_h = get_paper_dimensions(paper_size, config)
+
+            # For borderless, show the adjusted (virtual) paper size that will be used
+            if variant == Variant.BORDERLESS:
+                paper_w, paper_h = adjust_paper_for_borderless(paper_w, paper_h)
+
             max_len = get_max_length_for_dxf(paper_size, card_size, variant, config, unit)
             len_str = f", max_length={max_len}{unit}" if max_len is not None else ""
             click.echo(f"  {dxf_file.name} -> {output_file.name} ({orientation.value}, {paper_w} x {paper_h}{len_str})")
@@ -1149,12 +1179,23 @@ def batch(unit, studio_path, action_delay, calibration_path, generate_new, dry_r
             paper_w, paper_h = get_paper_dimensions(paper_size, config)
             max_len = get_max_length_for_dxf(paper_size, card_size, variant, config, unit)
 
+            # For borderless templates, adjust paper size to trick Silhouette Studio
+            # into using a 3mm effective inset (by using 10mm inset on larger virtual paper)
+            if variant == Variant.BORDERLESS:
+                paper_w, paper_h = adjust_paper_for_borderless(paper_w, paper_h)
+                # Use 10mm inset for borderless (Silhouette Studio's minimum)
+                inset_mm = 10.0
+            else:
+                # Use default 10mm inset for non-borderless
+                inset_mm = 10.0
+
             # Registration marks: always enabled, thickness=100,
-            # length set to the computed max for this layout.
+            # length set to the computed max for this layout, inset at calculated value
             reg_settings = RegistrationSettings(
                 enabled=True,
                 length=max_len if max_len is not None else 0,
                 thickness=100,
+                inset=inset_mm,
             )
 
             try:
