@@ -882,12 +882,12 @@ def cli():
 @click.option("--orientation", type=click.Choice([o.value for o in Orientation], case_sensitive=False), default=Orientation.LANDSCAPE.value, show_default=True, help="Paper orientation.")
 @click.option("--no_center", is_flag=True, help="Don't center paths to page.")
 @click.option("--registration", is_flag=True, help="Enable registration marks.")
-@click.option("--unit", type=click.Choice(["mm", "in"], case_sensitive=False), default="in", show_default=True, help="Unit for registration mark values.")
+@click.option("--unit", type=click.Choice(["mm", "in"], case_sensitive=False), required=True, help="Unit for registration mark values.")
 @click.option("--reg_length", type=float, default=0, show_default=True, help="Registration mark length. 0 = minimum allowed by Silhouette Studio.")
 @click.option("--reg_thickness", type=float, default=0, show_default=True, help="Registration mark thickness. 0 = minimum allowed by Silhouette Studio.")
 @click.option("--reg_inset", type=float, default=0, show_default=True, help="Registration mark inset. 0 = minimum allowed by Silhouette Studio.")
-@click.option("--action_delay", type=float, default=ACTION_DELAY, show_default=True, help="Delay between UI actions (seconds). Increase if Silhouette Studio is slow.")
-@click.option("--calibration_path", type=click.Path(), default=None, help="Path to calibration JSON. Default: assets/gui_coordinates.json.")
+@click.option("--action_delay", type=float, default=ACTION_DELAY, show_default=True, help="Delay between UI actions (seconds).")
+@click.option("--calibration_path", type=click.Path(), default=None, help="Path to calibration JSON.")
 @click.option("--studio_path", default=DEFAULT_STUDIO_PATH, show_default=True, help="Path to Silhouette Studio executable.")
 def convert(input_file, output_file, paper_size, orientation, no_center, registration, unit,
             reg_length, reg_thickness, reg_inset, action_delay, calibration_path, studio_path):
@@ -1048,7 +1048,7 @@ def calibrate(studio_path):
 
 
 @cli.command()
-@click.option("--unit", type=click.Choice(["mm", "in"], case_sensitive=False), required=True, help="Unit for registration mark values (must match Silhouette Studio's setting).")
+@click.option("--unit", type=click.Choice(["mm", "in"], case_sensitive=False), required=True, help="Unit for registration mark values.")
 @click.option("--studio_path", default=DEFAULT_STUDIO_PATH, show_default=True, help="Path to Silhouette Studio executable.")
 @click.option("--action_delay", type=float, default=ACTION_DELAY, show_default=True, help="Delay between UI actions (seconds).")
 @click.option("--calibration_path", type=click.Path(), default=None, help="Path to calibration JSON.")
