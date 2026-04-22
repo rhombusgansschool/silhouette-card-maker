@@ -1183,19 +1183,20 @@ def batch(unit, studio_path, action_delay, calibration_path, generate_new, dry_r
             # into using a 3mm effective inset (by using 10mm inset on larger virtual paper)
             if variant == Variant.BORDERLESS:
                 paper_w, paper_h = adjust_paper_for_borderless(paper_w, paper_h)
-                # Use 10mm inset for borderless (Silhouette Studio's minimum)
-                inset_mm = 10.0
-            else:
-                # Use default 10mm inset for non-borderless
-                inset_mm = 10.0
 
-            # Registration marks: always enabled, thickness=100,
-            # length set to the computed max for this layout, inset at calculated value
+            # Convert registration mark values to the specified unit
+            # Inset: always 10mm (Silhouette Studio's minimum)
+            # Thickness: 100 units (arbitrary large value to ensure visibility)
+            inset_value = 10.0 if unit == "mm" else 10.0 / 25.4
+            thickness_value = 100 if unit == "mm" else 100 / 25.4
+
+            # Registration marks: always enabled, thickness and inset in specified unit,
+            # length set to the computed max for this layout (already in correct unit)
             reg_settings = RegistrationSettings(
                 enabled=True,
                 length=max_len if max_len is not None else 0,
-                thickness=100,
-                inset=inset_mm,
+                thickness=thickness_value,
+                inset=inset_value,
             )
 
             try:
