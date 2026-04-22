@@ -699,8 +699,22 @@ def find_best_orientation(
 ) -> tuple[Orientation, page_manager.CardLayout]:
     """Resolve an OrientationMode to a concrete Orientation and compute the layout.
 
-    For OPTIMIZE, tries both orientations and returns the one with more cards,
-    using `preferred` as a tiebreaker.
+    OrientationMode represents user intent:
+      - LANDSCAPE or PORTRAIT: Force a specific orientation (manual control)
+      - OPTIMIZE: Try both orientations and automatically pick whichever fits more cards
+
+    Orientation is the concrete result (LANDSCAPE or PORTRAIT).
+
+    Args:
+        orientation_mode: User's orientation preference (manual or optimize).
+        card_width, card_height: Card dimensions as unit strings (e.g., "2.5in").
+        paper_width, paper_height: Paper dimensions as unit strings.
+        inset, length: Registration mark parameters as unit strings.
+        ppi: Pixels per inch for layout computation.
+        preferred: Tiebreaker orientation when OPTIMIZE finds equal card counts.
+
+    Returns:
+        (chosen_orientation, computed_layout)
 
     Raises:
         ValueError if no valid layout exists in any tried orientation.
@@ -715,10 +729,12 @@ def find_best_orientation(
         ppi=ppi,
     )
 
+    # Manual mode: user specified exact orientation (LANDSCAPE or PORTRAIT)
     if orientation_mode != OrientationMode.OPTIMIZE:
         orientation = Orientation(orientation_mode.value)
         return orientation, page_manager.generate_layout(orientation=orientation, **kwargs)
 
+    # Optimize mode: try both orientations and pick the one that fits more cards
     best_count = 0
     best_orientation = preferred
     best_computed = None
@@ -727,8 +743,11 @@ def find_best_orientation(
         try:
             computed = page_manager.generate_layout(orientation=orient, **kwargs)
         except ValueError:
+            # This orientation doesn't produce a valid layout, skip it
             continue
+        # Count total cards: rows × columns
         count = len(computed.x_pos) * len(computed.y_pos)
+        # Keep this orientation if it fits more cards, or if it's a tie and matches preferred
         if count > best_count or (count == best_count and orient == preferred):
             best_count = count
             best_orientation = orient
@@ -878,17 +897,17 @@ def generate_pdf(
         paper_size_def = layout_config.paper_sizes[paper_size]
 
         # Select variant based on borderless flag
-        variant = "borderless" if borderless else "default"
+        variant = Variant.BORDERLESS if borderless else Variant.DEFAULT
 
         # Look up layout from nested structure: layouts[paper][card][variant]
         if paper_size not in layout_config.layouts or card_size not in layout_config.layouts[paper_size]:
             raise Exception(f'No layout defined for paper "{paper_size}" with card "{card_size}". Add it to layouts.json.')
 
         card_layouts = layout_config.layouts[paper_size][card_size]
-        if variant not in card_layouts:
-            raise Exception(f'No {variant} layout defined for paper "{paper_size}" with card "{card_size}". Add it to layouts.json.')
+        if variant.value not in card_layouts:
+            raise Exception(f'No {variant.value} layout defined for paper "{paper_size}" with card "{card_size}". Add it to layouts.json.')
 
-        layout_def = card_layouts[variant]
+        layout_def = card_layouts[variant.value]
         orientation = layout_def.orientation
         version = layout_def.version
 
