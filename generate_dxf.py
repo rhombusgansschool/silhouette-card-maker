@@ -54,11 +54,11 @@ def generate_single_dxf(
     reg = config.defaults.registration
     ppi = config.ppi
 
-    # Use borderless inset for borderless variant
+    # Use appropriate inset for variant
     if variant_str == Variant.BORDERLESS.value:
-        template_inset = config.defaults.borderless_registration_inset
+        template_inset = config.defaults.registration.borderless.inset
     else:
-        template_inset = reg.inset
+        template_inset = config.defaults.registration.default.inset
 
     orientation = layout_def.orientation
     version = layout_def.version
@@ -409,9 +409,9 @@ def generate_all_optimized(config: LayoutConfig, out: Path):
 
                     # Use appropriate inset for variant
                     if variant == Variant.BORDERLESS.value:
-                        template_inset = config.defaults.borderless_registration_inset
+                        template_inset = config.defaults.registration.borderless.inset
                     else:
-                        template_inset = reg.inset
+                        template_inset = config.defaults.registration.default.inset
 
                     version = layout_def.version
 
