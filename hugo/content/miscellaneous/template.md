@@ -148,14 +148,14 @@ The `batch` command processes all DXF files in `cutting_templates/dxf/` and `cut
 For one-off conversions with custom DXF files:
 
 ```sh
-python dxf_to_studio3.py convert input.dxf output.studio3 --paper_size letter --unit mm
+python dxf_to_studio3.py convert input.dxf output.studio3 --unit mm --paper_size letter
 ```
 
 The `convert` command provides full control over a single conversion:
 
+- `--unit` (required): Unit for registration mark values - `mm` or `in`
 - `--paper_size`: Paper size from `layouts.json` (default: `letter`)
 - `--orientation`: `landscape` or `portrait` (default: `landscape`)
-- `--unit`: Unit for registration mark values - `mm` or `in` (default: `in`)
 - `--registration`: Enable registration marks
 - `--reg_length`, `--reg_thickness`, `--reg_inset`: Registration mark dimensions in the specified unit (default: `0` = minimum)
 
