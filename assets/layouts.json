@@ -2,11 +2,17 @@
     "ppi": 300,
     "defaults": {
         "card_radius": "3mm",
-        "borderless_registration_inset": "3mm",
         "registration": {
-            "inset": "10mm",
-            "thickness": "1mm",
-            "length": "5mm"
+            "default": {
+                "inset": "10mm",
+                "thickness": "1mm",
+                "length": "5mm"
+            },
+            "borderless": {
+                "inset": "3mm",
+                "thickness": "1mm",
+                "length": "5mm"
+            }
         }
     },
     "card_sizes": {

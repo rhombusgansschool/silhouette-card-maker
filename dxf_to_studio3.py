@@ -69,8 +69,7 @@ ASSETS_DIR = Path(__file__).parent / "assets"
 CALIBRATION_FILE = ASSETS_DIR / "gui_coordinates.json"
 
 # Batch conversion defaults
-DEFAULT_DXF_DIR = Path(__file__).parent / "cutting_templates" / "dxf"
-DEFAULT_OUTPUT_DIR = Path(__file__).parent / "cutting_templates"
+TEMPLATES_DIR = Path(__file__).parent / "cutting_templates"
 
 
 
@@ -1021,18 +1020,15 @@ def calibrate(studio_path):
 
 
 @cli.command()
-@click.option("--dxf_dir_path", type=click.Path(exists=True), default=str(DEFAULT_DXF_DIR), show_default=True, help="Directory containing DXF files.")
-@click.option("--output_dir_path", type=click.Path(), default=str(DEFAULT_OUTPUT_DIR), show_default=True, help="Output directory for .studio3 files.")
 @click.option("--unit", type=click.Choice(["mm", "in"], case_sensitive=False), required=True, help="Unit for registration mark values (must match Silhouette Studio's setting).")
 @click.option("--studio_path", default=DEFAULT_STUDIO_PATH, show_default=True, help="Path to Silhouette Studio executable.")
 @click.option("--action_delay", type=float, default=ACTION_DELAY, show_default=True, help="Delay between UI actions (seconds).")
 @click.option("--calibration_path", type=click.Path(), default=None, help="Path to calibration JSON.")
 @click.option("--new", "generate_new", is_flag=True, help="Only convert layouts whose .studio3 file is missing (based on layouts.json versions).")
 @click.option("--dry_run", is_flag=True, help="List files that would be converted without running Silhouette Studio.")
-def batch(dxf_dir_path, output_dir_path, unit, studio_path, action_delay, calibration_path, generate_new, dry_run):
-    """Batch convert all DXF files in a directory to .studio3 with registration marks."""
-    dxf_path = Path(dxf_dir_path)
-    out_path = Path(output_dir_path)
+def batch(unit, studio_path, action_delay, calibration_path, generate_new, dry_run):
+    """Batch convert all DXF files in cutting_templates/ to .studio3 with registration marks."""
+    out_path = TEMPLATES_DIR
     out_path.mkdir(parents=True, exist_ok=True)
 
     config = load_layout_config()
@@ -1050,7 +1046,7 @@ def batch(dxf_dir_path, output_dir_path, unit, studio_path, action_delay, calibr
                         dxf_file = out_path / "borderless" / "dxf" / f"{name}.dxf"
                     else:
                         studio3_file = out_path / f"{name}.studio3"
-                        dxf_file = dxf_path / f"{name}.dxf"
+                        dxf_file = out_path / "dxf" / f"{name}.dxf"
                     if not studio3_file.exists():
                         if dxf_file.exists():
                             dxf_files.append(dxf_file)
@@ -1059,13 +1055,13 @@ def batch(dxf_dir_path, output_dir_path, unit, studio_path, action_delay, calibr
         dxf_files.sort()
     else:
         # Search both default and borderless DXF directories
-        dxf_files = sorted(list(dxf_path.glob("*.dxf")) + list((out_path / "borderless" / "dxf").glob("*.dxf")))
+        dxf_files = sorted(list((out_path / "dxf").glob("*.dxf")) + list((out_path / "borderless" / "dxf").glob("*.dxf")))
 
     if not dxf_files:
         if generate_new:
             click.echo("All .studio3 files are up to date.")
         else:
-            click.echo(f"No DXF files found in {dxf_path}")
+            click.echo(f"No DXF files found in cutting_templates/dxf/ or cutting_templates/borderless/dxf/")
         return
 
     click.echo(f"Found {len(dxf_files)} DXF files to convert")
