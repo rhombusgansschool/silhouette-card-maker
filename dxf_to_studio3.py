@@ -882,13 +882,14 @@ def cli():
 @click.option("--orientation", type=click.Choice([o.value for o in Orientation], case_sensitive=False), default=Orientation.LANDSCAPE.value, show_default=True, help="Paper orientation.")
 @click.option("--no_center", is_flag=True, help="Don't center paths to page.")
 @click.option("--registration", is_flag=True, help="Enable registration marks.")
-@click.option("--reg_length", type=float, default=0, show_default=True, help="Registration mark length in inches. 0 = minimum allowed by Silhouette Studio.")
-@click.option("--reg_thickness", type=float, default=0, show_default=True, help="Registration mark thickness in inches. 0 = minimum allowed by Silhouette Studio.")
-@click.option("--reg_inset", type=float, default=0, show_default=True, help="Registration mark inset in inches. 0 = minimum allowed by Silhouette Studio.")
+@click.option("--unit", type=click.Choice(["mm", "in"], case_sensitive=False), default="in", show_default=True, help="Unit for registration mark values.")
+@click.option("--reg_length", type=float, default=0, show_default=True, help="Registration mark length. 0 = minimum allowed by Silhouette Studio.")
+@click.option("--reg_thickness", type=float, default=0, show_default=True, help="Registration mark thickness. 0 = minimum allowed by Silhouette Studio.")
+@click.option("--reg_inset", type=float, default=0, show_default=True, help="Registration mark inset. 0 = minimum allowed by Silhouette Studio.")
 @click.option("--action_delay", type=float, default=ACTION_DELAY, show_default=True, help="Delay between UI actions (seconds). Increase if Silhouette Studio is slow.")
 @click.option("--calibration_path", type=click.Path(), default=None, help="Path to calibration JSON. Default: assets/gui_coordinates.json.")
 @click.option("--studio_path", default=DEFAULT_STUDIO_PATH, show_default=True, help="Path to Silhouette Studio executable.")
-def convert(input_file, output_file, paper_size, orientation, no_center, registration,
+def convert(input_file, output_file, paper_size, orientation, no_center, registration, unit,
             reg_length, reg_thickness, reg_inset, action_delay, calibration_path, studio_path):
     """Convert a DXF file to .studio3 with paper size setup and registration marks."""
     orient = Orientation(orientation)
@@ -900,6 +901,8 @@ def convert(input_file, output_file, paper_size, orientation, no_center, registr
             thickness=reg_thickness,
             inset=reg_inset
         )
+        # Convert registration settings to inches (paper dimensions are always in inches)
+        reg_settings = convert_reg_settings_to_inches(reg_settings, unit)
 
     # Look up page dimensions from layouts.json
     config = load_layout_config()
