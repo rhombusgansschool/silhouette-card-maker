@@ -46,7 +46,6 @@ def generate_single_dxf(
     variant: str | Variant,
     config: LayoutConfig,
     output_dir: Path,
-    use_variant_subdirs: bool = True,
 ) -> tuple[int, int, float]:
     """Generate a single DXF file for a paper/card/variant combination.
 
@@ -91,13 +90,9 @@ def generate_single_dxf(
 
     name = template_name(paper_size, card_size, variant_str, version)
 
-    # Determine output directory based on variant (only if using default output structure)
-    if use_variant_subdirs and variant_str == Variant.BORDERLESS.value:
-        variant_dir = output_dir.parent / "borderless" / "dxf"
-    else:
-        variant_dir = output_dir
-    variant_dir.mkdir(parents=True, exist_ok=True)
-    output_file = variant_dir / f"{name}.dxf"
+    # Write to the specified output directory
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_file = output_dir / f"{name}.dxf"
 
     dxf_manager.generate_dxf(
         card_def.width,
@@ -338,7 +333,7 @@ def batch(generate_all, generate_new, optimize_all):
         raise click.UsageError("Provide exactly one of: --all, --new, or --optimize")
 
     if optimize_all:
-        generate_all_optimized(config, out, use_variant_subdirs=True)
+        generate_all_optimized(config, out)
         return
 
     # --all or --new
@@ -358,18 +353,20 @@ def batch(generate_all, generate_new, optimize_all):
             for variant, layout_def in variants.items():
                 name = template_name(ps, cs, variant, layout_def.version)
 
-                # Check output location based on variant
+                # Determine output directory based on variant
                 if variant == Variant.BORDERLESS.value:
-                    check_file = out.parent / "borderless" / "dxf" / f"{name}.dxf"
+                    variant_dir = out.parent / "borderless" / "dxf"
                 else:
-                    check_file = out / f"{name}.dxf"
+                    variant_dir = out
+
+                check_file = variant_dir / f"{name}.dxf"
 
                 if generate_new and check_file.exists():
                     skipped += 1
                     continue
 
                 try:
-                    num_cols, num_rows, ml_mm = generate_single_dxf(cs, ps, variant, config, out, use_variant_subdirs=True)
+                    num_cols, num_rows, ml_mm = generate_single_dxf(cs, ps, variant, config, variant_dir)
                     raw_config["layouts"][ps][cs][variant]["num_rows"] = num_rows
                     raw_config["layouts"][ps][cs][variant]["num_cols"] = num_cols
                     raw_config["layouts"][ps][cs][variant]["registration"] = {"length": f"{ml_mm}mm"}
@@ -412,7 +409,7 @@ def list():
         print(f"  {name}: {paper.width} x {paper.height}{aliases}")
 
 
-def generate_all_optimized(config: LayoutConfig, out: Path, use_variant_subdirs: bool = True):
+def generate_all_optimized(config: LayoutConfig, out: Path):
     """Generate DXF files for all paper/card/variant combinations, optimizing orientation.
 
     Iterates over every paper_size × card_size × variant combination from layouts.json.
@@ -496,8 +493,8 @@ def generate_all_optimized(config: LayoutConfig, out: Path, use_variant_subdirs:
 
                     name = template_name(paper_size, card_size, variant, version)
 
-                    # Determine output directory based on variant (only if using default output structure)
-                    if use_variant_subdirs and variant == Variant.BORDERLESS.value:
+                    # Determine output directory based on variant
+                    if variant == Variant.BORDERLESS.value:
                         variant_dir = out.parent / "borderless" / "dxf"
                     else:
                         variant_dir = out
