@@ -69,10 +69,14 @@ class RegistrationSettings(BaseModel):
     length: Optional[str] = None
 
 
+class VariantRegistrationSettings(BaseModel):
+    default: RegistrationSettings
+    borderless: RegistrationSettings
+
+
 class DefaultSettings(BaseModel):
     card_radius: str
-    borderless_registration_inset: str = "3mm"
-    registration: RegistrationSettings
+    registration: VariantRegistrationSettings
 
 
 class SpecialtyCardSizeDef(BaseModel):
@@ -131,7 +135,7 @@ class LayoutConfig(BaseModel):
     defaults: DefaultSettings
     card_sizes: Dict[str, CardSizeDef]
     paper_sizes: Dict[str, PaperSizeDef]
-    layouts: Dict[str, Dict[str, CardLayout]]
+    layouts: Dict[str, Dict[str, Dict[str, CardLayout]]]  # layouts[paper][card][variant]
     specialty_layouts: Optional[Dict[str, SpecialtyLayoutDef]] = None
 
 
@@ -809,7 +813,7 @@ def generate_pdf(
             raise Exception(f'Cannot use "--only_fronts" with double-sided cards. Remove cards from double-side image directory "{ds_dir_path}".')
 
     layout_config = load_layout_config()
-    default_reg = layout_config.defaults.registration
+    default_reg = layout_config.defaults.registration.default
 
     if borderless and specialty:
         raise Exception('Cannot use --borderless with --specialty. Specialty layouts define their own geometry.')
@@ -888,15 +892,14 @@ def generate_pdf(
         orientation = layout_def.orientation
         version = layout_def.version
 
-        # Effective registration: merge per-layout overrides on top of defaults
-        # Borderless uses borderless_registration_inset (3mm), normal uses regular inset (10mm)
+        # Effective registration: merge per-layout overrides on top of variant defaults
         layout_reg = layout_def.registration
         lr = layout_reg or RegistrationSettings()
 
         if borderless:
-            effective_inset = lr.inset or layout_config.defaults.borderless_registration_inset
+            effective_inset = lr.inset or layout_config.defaults.registration.borderless.inset
         else:
-            effective_inset = lr.inset or default_reg.inset
+            effective_inset = lr.inset or layout_config.defaults.registration.default.inset
 
         effective_thickness = lr.thickness or default_reg.thickness
         effective_length = lr.length or default_reg.length
