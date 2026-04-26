@@ -35,6 +35,22 @@ SCRIPT_DIR = Path(__file__).parent
 OUTPUT_DIR = SCRIPT_DIR / "cutting_templates" / "dxf"
 LAYOUTS_PATH = SCRIPT_DIR / "assets" / "layouts.json"
 
+
+def borderless_fits_12x24_mat(paper_width: str, paper_height: str) -> bool:
+    """Return True if the virtual borderless paper size fits within the 12x24 mat.
+
+    Borderless templates add 14mm to each actual paper dimension. For papers that
+    require the 12x24 mat, the virtual size must still fit within it (min dim ≤ 12in,
+    max dim ≤ 24in) so that "Constrain Media to Cutting Mat" can remain ON in
+    Silhouette Studio during conversion. See GitHub issue #136 for full details.
+
+    This restriction will be lifted in the future by always leaving constrain OFF
+    and assuming portrait mat orientation, which is consistent across all mat types.
+    """
+    virtual_w_in = (size_convert.size_to_mm(paper_width) + 14.0) / 25.4
+    virtual_h_in = (size_convert.size_to_mm(paper_height) + 14.0) / 25.4
+    return min(virtual_w_in, virtual_h_in) <= 12.0 and max(virtual_w_in, virtual_h_in) <= 24.0
+
 layout_config = load_layout_config()
 card_size_choices = get_all_card_size_names(layout_config)
 paper_size_choices = get_all_paper_size_names(layout_config)
@@ -371,6 +387,24 @@ def batch(generate_all, generate_new, optimize_all):
                     skipped += 1
                     continue
 
+                # For borderless templates on papers that need the 12x24 mat, skip if the
+                # virtual paper size (+14mm each side) would exceed the 12x24 mat.
+                # When the virtual size exceeds the mat, "Constrain Media to Cutting Mat"
+                # must be disabled to enter the dimensions — but disabling constrain causes
+                # the 12x24 mat to ignore landscape orientation (GitHub issue #136).
+                # TODO (#136): Remove this restriction once all templates use unconstrained
+                # mode with portrait mat orientation.
+                if variant == Variant.BORDERLESS.value:
+                    paper_def = config.paper_sizes[ps]
+                    actual_max_in = max(
+                        size_convert.size_to_mm(paper_def.width),
+                        size_convert.size_to_mm(paper_def.height),
+                    ) / 25.4
+                    if actual_max_in > 12.0 and not borderless_fits_12x24_mat(paper_def.width, paper_def.height):
+                        print(f"  Skipping {ps} + {cs} (borderless): virtual paper size exceeds 12x24 mat (see issue #136)")
+                        skipped += 1
+                        continue
+
                 try:
                     num_cols, num_rows, ml_mm = generate_single_dxf(cs, ps, variant, config, variant_dir)
                     raw_config["layouts"][ps][cs][variant]["num_rows"] = num_rows
@@ -441,6 +475,20 @@ def generate_all_optimized(config: LayoutConfig, out: Path):
             card_def = config.card_sizes[card_size]
 
             for variant, layout_def in variants.items():
+                # For borderless templates on papers that need the 12x24 mat, skip if the
+                # virtual paper size (+14mm each side) would exceed the 12x24 mat.
+                # See batch() and GitHub issue #136 for full explanation.
+                # TODO (#136): Remove this restriction once all templates use unconstrained
+                # mode with portrait mat orientation.
+                if variant == Variant.BORDERLESS.value:
+                    actual_max_in = max(
+                        size_convert.size_to_mm(paper_def.width),
+                        size_convert.size_to_mm(paper_def.height),
+                    ) / 25.4
+                    if actual_max_in > 12.0 and not borderless_fits_12x24_mat(paper_def.width, paper_def.height):
+                        print(f"  Skipping {paper_size} + {card_size} (borderless): virtual paper size exceeds 12x24 mat (see issue #136)")
+                        continue
+
                 try:
                     # Use appropriate registration settings for variant
                     if variant == Variant.BORDERLESS.value:

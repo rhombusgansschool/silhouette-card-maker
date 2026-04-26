@@ -439,7 +439,36 @@ class SilhouetteAutomation:
     # Page Setup
     # -------------------------------------------------------------------------
 
-    def setup_page(self, mat: CuttingMat, width_in: float, height_in: float, orientation: Orientation):
+    def is_constrain_media_checked(self) -> bool:
+        """Detect whether 'Constrain Media to Cutting Mat' is currently checked.
+
+        Takes a screenshot of the checkbox region and computes pixel variance.
+        The calibration JSON stores unchecked_variance and checked_variance as
+        reference thresholds; variance above the midpoint indicates checked.
+        Returns False (unchecked) if the element is not calibrated.
+        """
+        elem = self.calibration and self.calibration.get("elements", {}).get("constrain_media_checkbox")
+        if not elem:
+            print("  Warning: constrain_media_checkbox not calibrated; assuming unchecked.")
+            return False
+
+        win_x, win_y = self.get_window_origin()
+        cx = win_x + elem["relative"]["x"]
+        cy = win_y + elem["relative"]["y"]
+        region_size = 20
+        screenshot = pyautogui.screenshot(region=(cx - region_size // 2, cy - region_size // 2, region_size, region_size))
+        pixels = list(screenshot.getdata())
+        gray = [(r + g + b) / 3 for r, g, b in pixels]
+        mean = sum(gray) / len(gray)
+        variance = sum((v - mean) ** 2 for v in gray) / len(gray)
+
+        unchecked_var = elem.get("unchecked_variance", 0.2)
+        checked_var = elem.get("checked_variance", 2443.0)
+        threshold = (unchecked_var + checked_var) / 2
+        return variance > threshold
+
+    def setup_page(self, mat: CuttingMat, width_in: float, height_in: float, orientation: Orientation,
+                   keep_constrained: bool = True):
         """Configure page setup in four steps: cutting mat, mat dimensions, orientation, paper dimensions.
 
         Sets the media size to the cutting mat's maximum dimensions before
@@ -450,15 +479,24 @@ class SilhouetteAutomation:
 
         Args:
             mat: Cutting mat size (12x12 or 12x24).
-            width_in: Page width in inches.
-            height_in: Page height in inches.
+            width_in: Page width in the display unit.
+            height_in: Page height in the display unit.
             orientation: Page orientation (portrait or landscape).
+            keep_constrained: Whether to leave "Constrain Media to Cutting Mat" ON.
+                Should be False only for borderless 12x12 templates, where the virtual
+                paper may exceed the mat but square mat orientation doesn't matter.
+                See GitHub issue #136.
         """
-        print(f"  Setting up page: {mat.value} mat, {width_in:.2f}x{height_in:.2f}in, {orientation.value}")
+        print(f"  Setting up page: {mat.value} mat, {width_in:.2f}x{height_in:.2f}, {orientation.value}, keep_constrained={keep_constrained}")
 
         # Open the Page Setup panel once
         self.click_element("page_setup")
         time.sleep(ACTION_DELAY)
+
+        # Enable constrain so mat, media size, and orientation behave predictably.
+        if not self.is_constrain_media_checked():
+            print("  Enabling Constrain Media to Cutting Mat...")
+            self.click_element("constrain_media_checkbox")
 
         # Select cutting mat (12x12 or 12x24).
         self.click_element("cutting_mat_dropdown")
@@ -485,6 +523,13 @@ class SilhouetteAutomation:
             self.click_element("portrait_button")
         else:
             self.click_element("landscape_button")
+
+        # Conditionally disable constrain after setting orientation.
+        # TODO (#136): Remove this once all templates use unconstrained mode with
+        # portrait mat orientation, which is consistent across all mat types.
+        if not keep_constrained:
+            print("  Disabling Constrain Media to Cutting Mat...")
+            self.click_element("constrain_media_checkbox")
 
         # Set actual paper dimensions
         self.click_element("media_width_field")
@@ -592,7 +637,8 @@ class SilhouetteAutomation:
         unit: str,
         orientation: Orientation = Orientation.LANDSCAPE,
         center: bool = True,
-        registration: Optional[RegistrationSettings] = None
+        registration: Optional[RegistrationSettings] = None,
+        borderless: bool = False
     ):
         """
         Full conversion workflow:
@@ -637,7 +683,10 @@ class SilhouetteAutomation:
         if orientation == Orientation.PORTRAIT:
             width_in, height_in = height_in, width_in
         mat = determine_cutting_mat(width_in, height_in)
-        self.setup_page(mat, width_value, height_value, orientation)
+        # See GitHub issue #136. TODO (#136): Remove this distinction once all templates
+        # use unconstrained mode with portrait mat orientation.
+        keep_constrained = not (borderless and mat == CuttingMat.MAT_12X12)
+        self.setup_page(mat, width_value, height_value, orientation, keep_constrained=keep_constrained)
 
         if center:
             self.center_to_page()
@@ -1182,6 +1231,16 @@ def batch(unit, studio_path, action_delay, calibration_path, generate_new, dry_r
             # For borderless templates, adjust paper size to trick Silhouette Studio
             # into using a 3mm effective inset (by using 10mm inset on larger virtual paper)
             if variant == Variant.BORDERLESS:
+                # Skip if the virtual paper size exceeds the 12x24 mat (see GitHub issue #136).
+                # TODO (#136): Remove this skip once templates use unconstrained mode.
+                mat_check = determine_cutting_mat(size_convert.size_to_in(paper_w), size_convert.size_to_in(paper_h))
+                if mat_check == CuttingMat.MAT_12X24:
+                    virtual_w, virtual_h = adjust_paper_for_borderless(paper_w, paper_h)
+                    vw_in = size_convert.size_to_in(virtual_w)
+                    vh_in = size_convert.size_to_in(virtual_h)
+                    if min(vw_in, vh_in) > 12.0 or max(vw_in, vh_in) > 24.0:
+                        click.echo(f"  Skipping {dxf_file.name}: virtual paper exceeds 12x24 mat (see GitHub issue #136)")
+                        continue
                 paper_w, paper_h = adjust_paper_for_borderless(paper_w, paper_h)
 
             # Convert registration mark values to the specified unit
@@ -1209,6 +1268,7 @@ def batch(unit, studio_path, action_delay, calibration_path, generate_new, dry_r
                     orientation=orientation,
                     center=True,
                     registration=reg_settings,
+                    borderless=(variant == Variant.BORDERLESS),
                 )
                 converted += 1
             except Exception as e:
