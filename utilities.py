@@ -610,37 +610,36 @@ def draw_outline(
                 width=1,
             )
 
-def add_front_back_pages(front_page: Image.Image, back_page: Image.Image, pages: List[Image.Image], page_width: int, page_height: int, ppi_ratio: float, template: str, only_fronts: bool, label: str, orientation: Orientation, inset_px: int):
+def add_front_back_pages(front_page: Image.Image, back_page: Image.Image, pages: List[Image.Image], page_width: int, page_height: int, ppi_ratio: float, template: str, only_fronts: bool, label: str, orientation: Orientation, label_margin_px: int, borderless: bool = False):
     font = ImageFont.truetype(os.path.join(asset_directory, 'arial.ttf'), 40 * ppi_ratio)
 
     num_sheet = len(pages) + 1
     if not only_fronts:
         num_sheet = int(len(pages) / 2) + 1
 
-    label_text = f'sheet: {num_sheet}, template: {template}'
-    if label is not None:
-        label_text = f'label: {label}, {label_text}'
+    # Skip label for borderless templates (no room in margins)
+    if not borderless:
+        label_text = f'sheet: {num_sheet}, template: {template}'
+        if label is not None:
+            label_text = f'label: {label}, {label_text}'
 
-    # Label goes on the short side of the paper, opposite the top-left black square,
-    # positioned in the center of the inset region.
-    # Landscape: short sides are left/right; black square top-left → label on RIGHT.
-    # Portrait: short sides are top/bottom; black square top-left → label on BOTTOM.
-    label_margin_px = math.floor((page_width - inset_px / 2) * ppi_ratio) if orientation == Orientation.LANDSCAPE else math.floor((page_height - inset_px / 2) * ppi_ratio)
-
-    if orientation == Orientation.LANDSCAPE:
-        # Right side: rotate page, draw horizontal text, rotate back
-        front_page = front_page.rotate(-90, expand=True)
-        draw = ImageDraw.Draw(front_page)
-        label_x = math.floor((page_height / 2) * ppi_ratio)
-        label_y = label_margin_px
-        draw.text((label_x, label_y), label_text, fill=(0, 0, 0), anchor="mm", font=font)
-        front_page = front_page.rotate(90, expand=True)
-    else:
-        # Bottom side: horizontal text
-        draw = ImageDraw.Draw(front_page)
-        label_x = math.floor((page_width / 2) * ppi_ratio)
-        label_y = label_margin_px
-        draw.text((label_x, label_y), label_text, fill=(0, 0, 0), anchor="mm", font=font)
+        # Label goes on the short side of the paper, opposite the top-left black square.
+        # Landscape: short sides are left/right; black square top-left → label on RIGHT.
+        # Portrait: short sides are top/bottom; black square top-left → label on BOTTOM.
+        if orientation == Orientation.LANDSCAPE:
+            # Right side: rotate page, draw horizontal text, rotate back
+            front_page = front_page.rotate(-90, expand=True)
+            draw = ImageDraw.Draw(front_page)
+            label_x = math.floor((page_height / 2) * ppi_ratio)
+            label_y = math.floor(page_width * ppi_ratio) - label_margin_px
+            draw.text((label_x, label_y), label_text, fill=(0, 0, 0), anchor="mm", font=font)
+            front_page = front_page.rotate(90, expand=True)
+        else:
+            # Bottom side: horizontal text
+            draw = ImageDraw.Draw(front_page)
+            label_x = math.floor((page_width / 2) * ppi_ratio)
+            label_y = math.floor(page_height * ppi_ratio) - label_margin_px
+            draw.text((label_x, label_y), label_text, fill=(0, 0, 0), anchor="mm", font=font)
 
     # Rotate portrait pages to landscape so the generated PDF is always landscape.
     # This ensures offset_pdf.py works regardless of orientation detection.
@@ -984,6 +983,8 @@ def generate_pdf(
     ppi_ratio = ppi / 300
 
     inset_px = size_convert.size_to_pixel(pdf_inset, layout_config.ppi)
+    thickness_px = size_convert.size_to_pixel(effective_thickness, layout_config.ppi)
+    label_margin_px = math.floor((inset_px - thickness_px * 2) * ppi_ratio)
 
     # Load an image with the registration marks
     with page_manager.generate_reg_mark(
@@ -1139,7 +1140,8 @@ def generate_pdf(
                 only_fronts,
                 label,
                 orientation,
-                inset_px
+                label_margin_px,
+                borderless
             )
 
         if len(pages) == 0:
