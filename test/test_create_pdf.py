@@ -20,11 +20,13 @@ from pdf_cases import IMAGES_DIR, BACK_DIR, EXPECTED_DIR, TEST_CASES
 def test_basic_create_pdf():
     """Verify the CLI runs without error and produces a PDF."""
     runner = CliRunner()
-    with tempfile.TemporaryDirectory() as output_dir:
+    with tempfile.TemporaryDirectory() as output_dir, \
+         tempfile.TemporaryDirectory() as empty_ds_dir:
         output_path = os.path.join(output_dir, 'game.pdf')
         result = runner.invoke(cli, [
             '--front_dir_path', 'test/basic/front',
             '--back_dir_path', 'test/basic/back',
+            '--double_sided_dir_path', empty_ds_dir,
             '--output_path', output_path,
         ])
         assert result.exit_code == 0
@@ -118,11 +120,13 @@ def test_output_images(test_name, extra_args):
 def test_borderless_create_pdf():
     """Verify the CLI runs with --borderless and produces a PDF."""
     runner = CliRunner()
-    with tempfile.TemporaryDirectory() as output_dir:
+    with tempfile.TemporaryDirectory() as output_dir, \
+         tempfile.TemporaryDirectory() as empty_ds_dir:
         output_path = os.path.join(output_dir, 'game.pdf')
         result = runner.invoke(cli, [
             '--front_dir_path', 'test/basic/front',
             '--back_dir_path', 'test/basic/back',
+            '--double_sided_dir_path', empty_ds_dir,
             '--output_path', output_path,
             '--borderless',
         ])
@@ -133,11 +137,13 @@ def test_borderless_create_pdf():
 def test_borderless_a4_create_pdf():
     """Verify --borderless works with explicit paper size."""
     runner = CliRunner()
-    with tempfile.TemporaryDirectory() as output_dir:
+    with tempfile.TemporaryDirectory() as output_dir, \
+         tempfile.TemporaryDirectory() as empty_ds_dir:
         output_path = os.path.join(output_dir, 'game.pdf')
         result = runner.invoke(cli, [
             '--front_dir_path', 'test/basic/front',
             '--back_dir_path', 'test/basic/back',
+            '--double_sided_dir_path', empty_ds_dir,
             '--output_path', output_path,
             '--borderless',
             '--paper_size', 'a4',

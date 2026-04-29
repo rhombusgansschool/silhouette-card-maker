@@ -55,4 +55,11 @@ TEST_CASES = [
     ('extend_corners', ['--extend_corners', '10', '--only_fronts']),
     ('fit_crop', ['--card_size', 'domino', '--fit', 'crop', '--only_fronts']),
     ('skip', ['--skip', '0', '--skip', '4']),
+
+    # Borderless templates
+    ('borderless-letter-standard', ['--borderless', '--paper_size', 'letter', '--card_size', 'standard', '--only_fronts']),
+    ('borderless-a4-standard', ['--borderless', '--paper_size', 'a4', '--card_size', 'standard', '--only_fronts']),
+    ('borderless-letter-poker', ['--borderless', '--paper_size', 'letter', '--card_size', 'poker', '--only_fronts']),
+    ('borderless-a4-poker', ['--borderless', '--paper_size', 'a4', '--card_size', 'poker', '--only_fronts']),
+    ('borderless-tabloid-standard', ['--borderless', '--paper_size', 'tabloid', '--card_size', 'standard', '--only_fronts']),
 ]
