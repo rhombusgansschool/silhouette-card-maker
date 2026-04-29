@@ -1,5 +1,7 @@
 # Front Card Images
 
-Place single-sided card images here. These will be used for the front faces of cards.
+This directory should contain all your card front images.
 
-This directory is populated by plugin fetch scripts or manually added card images.
+The images should be in portrait orientation and cropped.
+
+The images can be in any image file format.
