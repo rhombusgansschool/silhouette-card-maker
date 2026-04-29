@@ -13,7 +13,7 @@ A smaller inset translates to more cutting area and more cards per sheet.
 
 We cannot reduce the inset below the minimum inset, so instead, we use custom paper sizes in Silhouette Studio.
 
-By adding 7mm to the paper width and height, we can trick Silhouette Studio into letting us use a 3mm inset.
+By adding 7mm to the paper width and height in Silhouette Studio, we can essentially trick the software into effectively using a 3mm inset.
 
 ## Benefits
 
@@ -52,3 +52,7 @@ python create_pdf.py --borderless
 Get your PDF at `game/output/game.pdf`.
 
 Use the appropriate borderless cutting template in [cutting_templates/borderless/](https://github.com/Alan-Cha/silhouette-card-maker/tree/borderless_templates4/cutting_templates/borderless).
+
+While placing the sheet onto the mat, maintain 7mm of clearance. In other words, instead of aligning the sheet with the grid on the mat, ensure that there is 7mm gap around the sheet.
+
+If you encounter registration issues, you can also put extra paper behind the registration marks.
