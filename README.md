@@ -50,25 +50,25 @@ The table below shows all possible paper and card size combinations and the layo
 
 | Format | `letter` | `tabloid` | `a4` | `a3` | `arch_b` |
 |---|---|---|---|---|---|
-| `standard` | 4x2 (8) | 4x4 (16) | 4x2 (8) | 6x3 (18) | 6x3 (18) |      
+| `standard` | 4x2 (8) | 4x4 (16) | 4x2 (8) | 6x3 (18) | 6x3 (18) |
 | `poker` | 4x2 (8) | 4x4 (16) | 4x2 (8) | 4x4 (16) | 6x3 (18) |
-| `bridge` | 4x2 (8) | 4x4 (16) | 3x3 (9) | 6x3 (18) | 7x3 (21) |        
+| `bridge` | 4x2 (8) | 4x4 (16) | 3x3 (9) | 6x3 (18) | 7x3 (21) |
 | `american_mini` | 4x4 (16) | 9x4 (36) | 4x4 (16) | 9x4 (36) | 10x4 (40) |
 | `bridge_square` | 3x4 (12) | 4x7 (28) | 3x4 (12) | 4x6 (24) | 4x7 (28) |
-| `business` | 2x5 (10) | 4x5 (20) | 2x5 (10) | 3x7 (21) | 3x8 (24) |    
-| `catan` | 3x3 (9) | 7x3 (21) | 5x2 (10) | 7x3 (21) | 5x5 (25) |        
-| `credit` | 2x4 (8) | 4x4 (16) | 2x5 (10) | 3x7 (21) | 3x7 (21) |       
-| `domino` | 5x2 (10) | 5x4 (20) | 5x2 (10) | 8x3 (24) | 9x3 (27) |      
+| `business` | 2x5 (10) | 4x5 (20) | 2x5 (10) | 3x7 (21) | 3x8 (24) |
+| `catan` | 3x3 (9) | 7x3 (21) | 5x2 (10) | 7x3 (21) | 5x5 (25) |
+| `credit` | 2x4 (8) | 4x4 (16) | 2x5 (10) | 3x7 (21) | 3x7 (21) |
+| `domino` | 5x2 (10) | 5x4 (20) | 5x2 (10) | 8x3 (24) | 9x3 (27) |
 | `domino_square` | 4x5 (20) | 5x9 (45) | 4x5 (20) | 6x8 (48) | 6x9 (54) |
-| `euro_business` | 3x3 (9) | 3x7 (21) | 3x3 (9) | 3x7 (21) | 3x7 (21) | 
-| `euro_mini` | 4x3 (12) | 9x3 (27) | 6x2 (12) | 8x4 (32) | 9x4 (36) |   
-| `japanese` | 4x2 (8) | 4x4 (16) | 3x3 (9) | 6x3 (18) | 7x3 (21) |      
+| `euro_business` | 3x3 (9) | 3x7 (21) | 3x3 (9) | 3x7 (21) | 3x7 (21) |
+| `euro_mini` | 4x3 (12) | 9x3 (27) | 6x2 (12) | 8x4 (32) | 9x4 (36) |
+| `japanese` | 4x2 (8) | 4x4 (16) | 3x3 (9) | 6x3 (18) | 7x3 (21) |
 | `jumbo` | 2x1 (2) | 4x1 (4) | 3x1 (3) | 3x2 (6) | 3x3 (9) |
-| `micro` | 7x4 (28) | 7x9 (63) | 5x6 (30) | 11x6 (66) | 12x6 (72) |     
-| `mini` | 5x3 (15) | 8x4 (32) | 4x4 (16) | 8x4 (32) | 9x4 (36) |        
-| `standard_double` | 2x2 (4) | 4x2 (8) | 2x2 (4) | 3x3 (9) | 3x3 (9) |  
+| `micro` | 7x4 (28) | 7x9 (63) | 5x6 (30) | 11x6 (66) | 12x6 (72) |
+| `mini` | 5x3 (15) | 8x4 (32) | 4x4 (16) | 8x4 (32) | 9x4 (36) |
+| `standard_double` | 2x2 (4) | 4x2 (8) | 2x2 (4) | 3x3 (9) | 3x3 (9) |
 | `tarot` | 2x2 (4) | 5x2 (10) | 2x2 (4) | 5x2 (10) | 4x3 (12) |
-| `70mm_square` | 3x2 (6) | 5x3 (15) | 3x2 (6) | 5x3 (15) | 5x4 (20) |  
+| `70mm_square` | 3x2 (6) | 5x3 (15) | 3x2 (6) | 5x3 (15) | 5x4 (20) |
 
 The table below shows each card size, sorted by size.
 
@@ -106,9 +106,47 @@ The table below shows each paper size, sorted by size and standard.
 
 You can find all the cutting templates for Silhouette Studio in [`cutting_templates/`](cutting_templates/).
 
-## Donate
+## Plugins
 
-If you enjoyed using Silhouette Card Maker, consider [donating](https://www.paypal.com/donate/?hosted_button_id=ZH2XCSLXERBW8) to help support me and the project. Thank you!
+Plugins streamline the process for acquiring card images for various games.
+
+The [Magic: The Gathering plugin](plugins/mtg/README.md) supports various decklist formats, including **Archidekt**, **CubeCobra**, **Deckstats**, **MPCFill**, **MTGA**, **MTGO**, **Moxfield**, and **Scryfall** formats.
+
+The [Pokemon plugin](plugins/pokemon/README.md) supports **Limitless TCG** format.
+
+The [Yu-Gi-Oh! plugin](plugins/yugioh/README.md) supports **YDK** and **YDKE** formats.
+
+The [Altered plugin](plugins/altered/README.md) supports **Ajordat** format.
+
+The [Ashes Reborn plugin](plugins/ashes_reborn/README.md) supports **Ashes** and **Ashes DB** formats.
+
+The [Bushiroad plugin](plugins/bushiroad/README.md) supports **Bushiroad Deck Log** format for Cardfight Vanguard, Shadowverse: Evolve, Weiss Schwarz, Godzilla Card Game, and hololive.
+
+The [Digimon plugin](plugins/digimon/README.md) supports **Digimoncard.app**, **Digimoncard.dev**, **Digimoncard.io**, **DigimonMeta**, **Tabletop Simulator**, and **Untap** formats.
+
+The [Echoes of Astra plugin](plugins/echoes_of_astra/README.md) supports **AstraBuilder** format.
+
+The [Elestrals plugin](plugins/elestrals/README.md) supports **Elestrals** format.
+
+The [Final Fantasy plugin](plugins/final_fantasy/README.md) supports **OCTGN**, **Tabletop Simulator**, and **Untap** formats.
+
+The [Flesh and Blood plugin](plugins/flesh_and_blood/README.md) supports **Fabrary** format.
+
+The [Grand Archive plugin](plugins/grand_archive/README.md) supports **Omnideck** format.
+
+The [Gundam plugin](plugins/gundam/README.md) supports **DeckPlanet**, **Egman Events**, **ExBurst**, and **Limitless TCG** formats.
+
+The [Lorcana plugin](plugins/lorcana/README.md) supports **Dreamborn** format.
+
+The [Netrunner plugin](plugins/netrunner/README.md) supports **bbCode** and **Jinteki** formats.
+
+The [One Piece plugin](plugins/one_piece/README.md) supports **Egman Events** and **OPTCG Simulator** formats.
+
+The [Riftbound plugin](plugins/riftbound/README.md) supports **Piltover Archive**, **Pixelborn**, and **Tabletop Simulator** formats.
+
+The [Sorcery: Contested Realm plugin](plugins/sorcery_contested_realm/README.md) supports **Curiosa** format.
+
+The [Star Wars Unlimited plugin](plugins/star_wars_unlimited/README.md) supports **Melee**, **Picklist**, and **SWUDB** formats.
 
 ## create_pdf.py
 `create_pdf.py` is a CLI tool that layouts your card images into a PDF with registration marks that can be cut out with the appropriate cutting template in [`cutting_templates/`](cutting_templates/).
@@ -157,48 +195,6 @@ python create_pdf.py --paper_size a4
 
 Get your PDF at `game/output/game.pdf`.
 
-### Plugins
-
-Plugins streamline the process for acquiring card images for various games.
-
-The [Magic: The Gathering plugin](plugins/mtg/README.md) supports various decklist formats, including **Archidekt**, **CubeCobra**, **Deckstats**, **MPCFill**, **MTGA**, **MTGO**, **Moxfield**, and **Scryfall** formats.
-
-The [Pokemon plugin](plugins/pokemon/README.md) supports **Limitless TCG** format.
-
-The [Yu-Gi-Oh! plugin](plugins/yugioh/README.md) supports **YDK** and **YDKE** formats.
-
-The [Altered plugin](plugins/altered/README.md) supports **Ajordat** format.
-
-The [Ashes Reborn plugin](plugins/ashes_reborn/README.md) supports **Ashes** and **Ashes DB** formats.
-
-The [Bushiroad plugin](plugins/bushiroad/README.md) supports **Bushiroad Deck Log** format for Cardfight Vanguard, Shadowverse: Evolve, Weiss Schwarz, Godzilla Card Game, and hololive.
-
-The [Digimon plugin](plugins/digimon/README.md) supports **Digimoncard.app**, **Digimoncard.dev**, **Digimoncard.io**, **DigimonMeta**, **Tabletop Simulator**, and **Untap** formats.
-
-The [Echoes of Astra plugin](plugins/echoes_of_astra/README.md) supports **AstraBuilder** format.
-
-The [Elestrals plugin](plugins/elestrals/README.md) supports **Elestrals** format.
-
-The [Final Fantasy plugin](plugins/final_fantasy/README.md) supports **OCTGN**, **Tabletop Simulator**, and **Untap** formats.
-
-The [Flesh and Blood plugin](plugins/flesh_and_blood/README.md) supports **Fabrary** format.
-
-The [Grand Archive plugin](plugins/grand_archive/README.md) supports **Omnideck** format.
-
-The [Gundam plugin](plugins/gundam/README.md) supports **DeckPlanet**, **Egman Events**, **ExBurst**, and **Limitless TCG** formats.
-
-The [Lorcana plugin](plugins/lorcana/README.md) supports **Dreamborn** format.
-
-The [Netrunner plugin](plugins/netrunner/README.md) supports **bbCode** and **Jinteki** formats.
-
-The [One Piece plugin](plugins/one_piece/README.md) supports **Egman Events** and **OPTCG Simulator** formats.
-
-The [Riftbound plugin](plugins/riftbound/README.md) supports **Piltover Archive**, **Pixelborn**, and **Tabletop Simulator** formats.
-
-The [Sorcery: Contested Realm plugin](plugins/sorcery_contested_realm/README.md) supports **Curiosa** format.
-
-The [Star Wars Unlimited plugin](plugins/star_wars_unlimited/README.md) supports **Melee**, **Picklist**, and **SWUDB** formats.
-
 ### Double-Sided Cards
 
 To create double-sided cards, put front images in the `game/front/` folder and back images in the `game/double_sided/` folder. The filenames (and file extensions) must match for each pair.
@@ -234,6 +230,20 @@ python create_pdf.py --skip 0
 ```
 
 ![Skip back](hugo/static/images/skip_back.png)
+
+### Registration Marks
+
+`create_pdf.py` generates the 3-corner registration mark pattern by default.
+
+The release of the **Silhouette Cameo 5 Alpha** also introduced the new 4-corner registration mark pattern.
+
+To generate a PDF with the new 4-corner registration mark pattern, use the `--registration` option.
+
+```sh
+python create_pdf.py --registration 4
+```
+
+However, Silhouette Cameo 5 Alpha users can still use the 3-corner registration mark pattern by setting machine to **Cameo 5** in Silhouette Studio.
 
 ### CLI Options
 
@@ -280,6 +290,8 @@ Options:
   --label TEXT                    Apply a custom label to each page.
   --show_outline                  Overlay a black outline of the cutting path
                                   on each page.
+  --borderless                    Use tighter margins to fit more cards per
+                                  page.
   --version                       Show the version and exit.
   --help                          Show this message and exit.
 ```
@@ -430,3 +442,7 @@ Options:
 ```sh
 python clean_up.py
 ```
+
+## Donate
+
+If you enjoyed using Silhouette Card Maker, consider [donating](https://www.paypal.com/donate/?hosted_button_id=ZH2XCSLXERBW8) to help support the project. Thank you!

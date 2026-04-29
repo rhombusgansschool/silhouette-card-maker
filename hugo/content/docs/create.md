@@ -71,15 +71,43 @@ Get your PDF at `game/output/game.pdf`.
 
 Plugins streamline the process for acquiring card images for various games.
 
-The [Magic: The Gathering]({{% ref "../plugins/mtg" %}}) plugin supports various decklist formats, including **MTGA**, **MTGO**, **Archidekt**, **Deckstats**, **Moxfield**, and **Scryfall**.
+The [Magic: The Gathering]({{% ref "../plugins/mtg" %}}) plugin supports various decklist formats, including **Archidekt**, **CubeCobra**, **Deckstats**, **MPCFill**, **MTGA**, **MTGO**, **Moxfield**, and **Scryfall** formats.
+
+The [Pokemon]({{% ref "../plugins/pokemon" %}}) plugin supports **Limitless TCG** format.
 
 The [Yu-Gi-Oh!]({{% ref "../plugins/yugioh" %}}) plugin supports **YDK** and **YDKE** formats.
 
+The [Altered]({{% ref "../plugins/altered" %}}) plugin supports **Ajordat** format.
+
+The [Ashes Reborn]({{% ref "../plugins/ashes_reborn" %}}) plugin supports **Ashes** and **Ashes DB** formats.
+
+The [Bushiroad]({{% ref "../plugins/bushiroad" %}}) plugin supports **Bushiroad Deck Log** format for Cardfight Vanguard, Shadowverse: Evolve, Weiss Schwarz, Godzilla Card Game, and hololive.
+
+The [Digimon]({{% ref "../plugins/digimon" %}}) plugin supports **Digimoncard.app**, **Digimoncard.dev**, **Digimoncard.io**, **DigimonMeta**, **Tabletop Simulator**, and **Untap** formats.
+
+The [Echoes of Astra]({{% ref "../plugins/echoes_of_astra" %}}) plugin supports **AstraBuilder** format.
+
+The [Elestrals]({{% ref "../plugins/elestrals" %}}) plugin supports **Elestrals** format.
+
+The [Final Fantasy]({{% ref "../plugins/final_fantasy" %}}) plugin supports **OCTGN**, **Tabletop Simulator**, and **Untap** formats.
+
+The [Flesh and Blood]({{% ref "../plugins/flesh_and_blood" %}}) plugin supports **Fabrary** format.
+
+The [Grand Archive]({{% ref "../plugins/grand_archive" %}}) plugin supports **Omnideck** format.
+
+The [Gundam]({{% ref "../plugins/gundam" %}}) plugin supports **DeckPlanet**, **Egman Events**, **ExBurst**, and **Limitless TCG** formats.
+
 The [Lorcana]({{% ref "../plugins/lorcana" %}}) plugin supports **Dreamborn** format.
 
-The [Riftbound plugin]({{% ref "../plugins/riftbound" %}}) supports **Tabletop Simulator**, **Pixelborn**, and **Piltover Archive** formats.
+The [Netrunner]({{% ref "../plugins/netrunner" %}}) plugin supports **bbCode** and **Jinteki** formats.
 
-The [Altered plugin]({{% ref "../plugins/altered" %}}) supports **Ajordat** format.
+The [One Piece]({{% ref "../plugins/one_piece" %}}) plugin supports **Egman Events** and **OPTCG Simulator** formats.
+
+The [Riftbound]({{% ref "../plugins/riftbound" %}}) plugin supports **Piltover Archive**, **Pixelborn**, and **Tabletop Simulator** formats.
+
+The [Sorcery: Contested Realm]({{% ref "../plugins/sorcery_contested_realm" %}}) plugin supports **Curiosa** format.
+
+The [Star Wars Unlimited]({{% ref "../plugins/star_wars_unlimited" %}}) plugin supports **Melee**, **Picklist**, and **SWUDB** formats.
 
 ## Double-Sided Cards
 
@@ -87,7 +115,7 @@ To create double-sided cards, put front images in the `game/front/` folder and b
 
 ## Corner Artifacts
 
-If your card images have rounded corners, they may be missing print bleed in the PDF. You may have seen white Xs appear in your PDF; these are artifacts from rounded corners. Because of the missing print bleed, when these cards are cut, they may have a sliver of white on the corners.
+If your card images have rounded corners, they may be missing print bleed in the PDF. Because of the missing print bleed, when the cards are cut, they may have a sliver of white on the corners.
 
 ![Extend corners](/images/extend_corners.jpg)
 
@@ -97,7 +125,7 @@ The `--extend_corners` option can ameliorate this issue. You may need to experim
 python create_pdf.py --extend_corners 10
 ```
 
-### Skip Cards
+## Skip Cards
 
 One solution for registration issues is to use a Post-It note to cover up cards near the registration marks.
 
@@ -116,6 +144,20 @@ python create_pdf.py --skip 0
 ```
 
 ![Skip back](/images/skip_back.png)
+
+## Registration Marks
+
+`create_pdf.py` generates the 3-corner registration mark pattern by default.
+
+The release of the **Silhouette Cameo 5 Alpha** also introduced the new 4-corner registration mark pattern.
+
+To generate a PDF with the new 4-corner registration mark pattern, use the `--registration` option.
+
+```sh
+python create_pdf.py --registration 4
+```
+
+However, Silhouette Cameo 5 Alpha users can still use the 3-corner registration mark pattern by setting machine to **Cameo 5** in Silhouette Studio.
 
 ## CLI Options
 
@@ -162,6 +204,8 @@ Options:
   --label TEXT                    Apply a custom label to each page.
   --show_outline                  Overlay a black outline of the cutting path
                                   on each page.
+  --borderless                    Use tighter margins to fit more cards per
+                                  page.
   --version                       Show the version and exit.
   --help                          Show this message and exit.
 ```
