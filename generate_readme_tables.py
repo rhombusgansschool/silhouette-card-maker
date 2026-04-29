@@ -67,7 +67,7 @@ def generate_tables():
         cells = []
         for paper in paper_order:
             if paper in layouts and card in layouts[paper]:
-                layout = layouts[paper][card]
+                layout = layouts[paper][card]["default"]
                 r = layout["num_rows"]
                 c = layout["num_cols"]
                 cells.append(f"{c}x{r} ({c * r})")
