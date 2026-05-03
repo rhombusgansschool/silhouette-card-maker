@@ -145,6 +145,11 @@ def load_layout_config() -> LayoutConfig:
         return LayoutConfig(**json.load(f))
 
 
+_layout_config = load_layout_config()
+BORDERLESS_INSET_MM = size_convert.size_to_mm(_layout_config.defaults.registration.borderless.inset)
+BORDERLESS_EXPANSION_MM = (page_manager.MIN_REG_INSET_MM - BORDERLESS_INSET_MM) * 2
+
+
 def resolve_card_size_alias(layout_config: LayoutConfig, card_size: str) -> str:
     """Resolve a card size alias to its canonical name. Returns the original if not an alias."""
     for name, card_def in layout_config.card_sizes.items():

@@ -38,8 +38,9 @@ import platform
 import click
 
 from enums import Orientation, Variant
-from utilities import load_layout_config, get_all_paper_size_names, resolve_paper_size_alias, LayoutConfig, template_name
+from utilities import load_layout_config, get_all_paper_size_names, resolve_paper_size_alias, LayoutConfig, template_name, BORDERLESS_EXPANSION_MM
 import size_convert
+import page_manager
 
 # Platform check - this script only works on Windows
 if platform.system() != "Windows":
@@ -130,26 +131,20 @@ def determine_cutting_mat(width_in: float, height_in: float) -> CuttingMat:
 def adjust_paper_for_borderless(paper_width: str, paper_height: str) -> tuple[str, str]:
     """Adjust paper dimensions for borderless templates.
 
-    Borderless templates use a 4mm inset, but Silhouette Studio's minimum is 10mm.
-    To work around this, we tell Silhouette Studio the paper is 12mm larger
-    (6mm on each side), so its 10mm inset becomes an effective 4mm inset on the
-    actual paper.
+    Tells Silhouette Studio the paper is larger by BORDERLESS_EXPANSION_MM so its
+    10mm minimum inset becomes an effective BORDERLESS_INSET_MM inset on the actual paper.
 
     Args:
         paper_width: Paper width as a unit string (e.g., "279.4mm", "11in").
         paper_height: Paper height as a unit string (e.g., "215.9mm", "8.5in").
 
     Returns:
-        (adjusted_width, adjusted_height) as unit strings with 12mm added to each dimension.
+        (adjusted_width, adjusted_height) as unit strings with BORDERLESS_EXPANSION_MM added to each dimension.
     """
-    # Convert to mm, add 12mm, convert back to string
     width_mm = size_convert.size_to_mm(paper_width)
     height_mm = size_convert.size_to_mm(paper_height)
 
-    adjusted_width_mm = width_mm + 12.0
-    adjusted_height_mm = height_mm + 12.0
-
-    return f"{adjusted_width_mm}mm", f"{adjusted_height_mm}mm"
+    return f"{width_mm + BORDERLESS_EXPANSION_MM}mm", f"{height_mm + BORDERLESS_EXPANSION_MM}mm"
 
 
 # =============================================================================
@@ -164,9 +159,16 @@ def type_in_field(value: str):
     The mouse must already be positioned on the field.
     """
     pyautogui.doubleClick()
-    time.sleep(SETTLE_DELAY)
     pyautogui.write(str(value))
-    time.sleep(SETTLE_DELAY)
+    pyautogui.press('enter')
+
+    # Repeat to ensrure the value is entered correctly
+    pyautogui.doubleClick()
+    pyautogui.write(str(value))
+    pyautogui.press('enter')
+    pyautogui.doubleClick()
+    pyautogui.write(str(value))
+
     pyautogui.press('enter')
     time.sleep(ACTION_DELAY)
 
@@ -1229,25 +1231,24 @@ def batch(unit, studio_path, action_delay, calibration_path, generate_new, dry_r
             max_len = get_max_length_for_dxf(paper_size, card_size, variant, config, unit)
 
             # For borderless templates, adjust paper size to trick Silhouette Studio
-            # into using a 4mm effective inset (by using 10mm inset on larger virtual paper)
+            # into using a smaller effective inset (by using 10mm inset on larger virtual paper)
             if variant == Variant.BORDERLESS:
+                virtual_w, virtual_h = adjust_paper_for_borderless(paper_w, paper_h)
                 # Skip if the virtual paper size exceeds the 12x24 mat (see GitHub issue #136).
                 # TODO (#136): Remove this skip once templates use unconstrained mode.
                 mat_check = determine_cutting_mat(size_convert.size_to_in(paper_w), size_convert.size_to_in(paper_h))
                 if mat_check == CuttingMat.MAT_12X24:
-                    virtual_w, virtual_h = adjust_paper_for_borderless(paper_w, paper_h)
                     vw_in = size_convert.size_to_in(virtual_w)
                     vh_in = size_convert.size_to_in(virtual_h)
                     if min(vw_in, vh_in) > 12.0 or max(vw_in, vh_in) > 24.0:
                         click.echo(f"  Skipping {dxf_file.name}: virtual paper exceeds 12x24 mat (see GitHub issue #136)")
                         continue
-                paper_w, paper_h = adjust_paper_for_borderless(paper_w, paper_h)
+                paper_w, paper_h = virtual_w, virtual_h
 
             # Convert registration mark values to the specified unit
-            # Inset: always 10mm (Silhouette Studio's minimum)
-            # Thickness: 100 units (arbitrary large value to ensure visibility)
-            inset_value = 10.0 if unit == "mm" else 10.0 / 25.4
-            thickness_value = 100 if unit == "mm" else 100 / 25.4
+            # Inset: always MIN_REG_INSET_MM (Silhouette Studio's minimum)
+            inset_value = page_manager.MIN_REG_INSET_MM if unit == "mm" else page_manager.MIN_REG_INSET_MM / 25.4
+            thickness_value = page_manager.MAX_REG_THICKNESS_MM if unit == "mm" else page_manager.MAX_REG_THICKNESS_MM / 25.4
 
             # Registration marks: always enabled, thickness and inset in specified unit,
             # length set to the computed max for this layout (already in correct unit)

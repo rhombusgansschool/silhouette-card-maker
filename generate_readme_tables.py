@@ -53,7 +53,7 @@ def generate_tables():
             borderless = config.layouts.get(paper, {}).get(card, {}).get("borderless")
             if default and borderless:
                 improvement = (borderless.num_cols * borderless.num_rows) - (default.num_cols * default.num_rows)
-                cells.append(f"{borderless.num_cols}x{borderless.num_rows} (+{improvement})")
+                cells.append(f"{borderless.num_cols}x{borderless.num_rows} ({improvement:+d})")
             else:
                 cells.append("N/A")
         print(f"| `{card}` | {' | '.join(cells)} |")
