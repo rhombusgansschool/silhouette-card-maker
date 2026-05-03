@@ -622,29 +622,27 @@ def add_front_back_pages(front_page: Image.Image, back_page: Image.Image, pages:
     if not only_fronts:
         num_sheet = int(len(pages) / 2) + 1
 
-    # Skip label for borderless templates (no room in margins)
-    if not borderless:
-        label_text = f'sheet: {num_sheet}, template: {template}'
-        if label is not None:
-            label_text = f'label: {label}, {label_text}'
+    label_text = f'sheet: {num_sheet}, template: {template}'
+    if label is not None:
+        label_text = f'label: {label}, {label_text}'
 
-        # Label goes on the short side of the paper, opposite the top-left black square.
-        # Landscape: short sides are left/right; black square top-left → label on RIGHT.
-        # Portrait: short sides are top/bottom; black square top-left → label on BOTTOM.
-        if orientation == Orientation.LANDSCAPE:
-            # Right side: rotate page, draw horizontal text, rotate back
-            front_page = front_page.rotate(-90, expand=True)
-            draw = ImageDraw.Draw(front_page)
-            label_x = math.floor((page_height / 2) * ppi_ratio)
-            label_y = math.floor(page_width * ppi_ratio) - label_margin_px
-            draw.text((label_x, label_y), label_text, fill=(0, 0, 0), anchor="mm", font=font)
-            front_page = front_page.rotate(90, expand=True)
-        else:
-            # Bottom side: horizontal text
-            draw = ImageDraw.Draw(front_page)
-            label_x = math.floor((page_width / 2) * ppi_ratio)
-            label_y = math.floor(page_height * ppi_ratio) - label_margin_px
-            draw.text((label_x, label_y), label_text, fill=(0, 0, 0), anchor="mm", font=font)
+    # Label goes on the short side of the paper, opposite the top-left black square.
+    # Landscape: short sides are left/right; black square top-left → label on RIGHT.
+    # Portrait: short sides are top/bottom; black square top-left → label on BOTTOM.
+    if orientation == Orientation.LANDSCAPE:
+        # Right side: rotate page, draw horizontal text, rotate back
+        front_page = front_page.rotate(-90, expand=True)
+        draw = ImageDraw.Draw(front_page)
+        label_x = math.floor((page_height / 2) * ppi_ratio)
+        label_y = math.floor(page_width * ppi_ratio) - label_margin_px
+        draw.text((label_x, label_y), label_text, fill=(0, 0, 0), anchor="mm", font=font)
+        front_page = front_page.rotate(90, expand=True)
+    else:
+        # Bottom side: horizontal text
+        draw = ImageDraw.Draw(front_page)
+        label_x = math.floor((page_width / 2) * ppi_ratio)
+        label_y = math.floor(page_height * ppi_ratio) - label_margin_px
+        draw.text((label_x, label_y), label_text, fill=(0, 0, 0), anchor="mm", font=font)
 
     # Rotate portrait pages to landscape so the generated PDF is always landscape.
     # This ensures offset_pdf.py works regardless of orientation detection.
@@ -989,7 +987,11 @@ def generate_pdf(
 
     inset_px = size_convert.size_to_pixel(pdf_inset, layout_config.ppi)
     thickness_px = size_convert.size_to_pixel(effective_thickness, layout_config.ppi)
-    label_margin_px = math.floor((inset_px - thickness_px * 2) * ppi_ratio)
+    if borderless:
+        # Different margin for borderless because of space constraints
+        label_margin_px = math.floor(inset_px * ppi_ratio)
+    else:
+        label_margin_px = math.floor((inset_px - thickness_px * 2) * ppi_ratio)
 
     # Load an image with the registration marks
     with page_manager.generate_reg_mark(
@@ -1174,9 +1176,6 @@ def generate_pdf(
             pages[0].save(output_path, format='PDF', save_all=True, append_images=pages[1:], resolution=math.floor(300 * ppi_ratio), speed=0, subsampling=0, quality=quality)
             print(f'Generated PDF: {output_path}')
 
-        print(f'Registration length: {effective_length}, thickness: {effective_thickness}')
-        if borderless:
-            print(f'Media size: {paper_size_def.width} x {paper_size_def.height}')
 
 class OffsetData(BaseModel):
     x_offset: int
