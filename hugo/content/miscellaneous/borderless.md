@@ -69,7 +69,7 @@ python create_pdf.py --borderless
 
 Get your borderless PDF at `game/output/game.pdf`.
 
-Use the appropriate borderless cutting template in [cutting_templates/borderless/](https://github.com/Alan-Cha/silhouette-card-maker/tree/borderless_templates4/cutting_templates/borderless).
+Use the appropriate borderless cutting template in [cutting_templates/borderless/](https://github.com/Alan-Cha/silhouette-card-maker/tree/main/cutting_templates/borderless).
 
 While placing the paper onto the mat, maintain 6.5mm of clearance from the edge of the grid. Recall that the software believes we are using paper that is 13mm larger in height and width. Therefore, instead of aligning the paper against the grid, we need to maintain 6.5mm (13mm/2) of clearance.
 

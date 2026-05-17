@@ -71,7 +71,7 @@ python generate_dxf.py batch --optimize
 
 DXF files are written to:
 - [`cutting_templates/dxf/`](https://github.com/Alan-Cha/silhouette-card-maker/tree/main/cutting_templates/dxf) - Default layouts with standard 10mm registration mark inset
-- `cutting_templates/borderless/dxf/` - Borderless layouts with 3mm registration mark inset for tighter spacing
+- `cutting_templates/borderless/dxf/` - Borderless layouts with 3.5mm registration mark inset for tighter spacing
 
 ## Create Template
 
@@ -114,11 +114,7 @@ Click the **Print & Cut** icon in the left sidebar. Enable the **registration ma
 
 Press `Ctrl+A` to select all, then `Ctrl+Shift+G` to ungroup.
 
-**Step 7: Release compound path**
-
-Press `Ctrl+A` to select all, then `Ctrl+Shift+E` to release the compound path. This makes each card path individually selectable in the saved file.
-
-**Step 8: Save as `.studio3`**
+**Step 7: Save as `.studio3`**
 
 Press `Ctrl+Shift+S`. Save the file to `cutting_templates/` with a `.studio3` extension.
 
