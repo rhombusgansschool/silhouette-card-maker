@@ -12,7 +12,7 @@ from click.testing import CliRunner
 import numpy as np
 from PIL import Image, ImageChops
 from create_pdf import cli
-from pdf_cases import IMAGES_DIR, BACK_DIR, EXPECTED_DIR, TEST_CASES
+from pdf_cases import IMAGES_DIR, BACK_DIR, DS_DIR, EXPECTED_DIR, TEST_CASES
 
 
 # --- Smoke Test ---
@@ -20,13 +20,12 @@ from pdf_cases import IMAGES_DIR, BACK_DIR, EXPECTED_DIR, TEST_CASES
 def test_basic_create_pdf():
     """Verify the CLI runs without error and produces a PDF."""
     runner = CliRunner()
-    with tempfile.TemporaryDirectory() as output_dir, \
-         tempfile.TemporaryDirectory() as empty_ds_dir:
+    with tempfile.TemporaryDirectory() as output_dir:
         output_path = os.path.join(output_dir, 'game.pdf')
         result = runner.invoke(cli, [
             '--front_dir_path', 'test/basic/front',
             '--back_dir_path', 'test/basic/back',
-            '--double_sided_dir_path', empty_ds_dir,
+            '--double_sided_dir_path', DS_DIR,
             '--output_path', output_path,
         ])
         assert result.exit_code == 0
@@ -89,25 +88,24 @@ def run_output_images_test(test_name, extra_args=None):
     )
 
     with tempfile.TemporaryDirectory() as output_dir:
-        with tempfile.TemporaryDirectory() as empty_ds_dir:
-            args = [
-                '--front_dir_path', IMAGES_DIR,
-                '--back_dir_path', BACK_DIR,
-                '--double_sided_dir_path', empty_ds_dir,
-                '--output_path', os.path.join(output_dir, 'output.pdf'),
-                '--output_images',
-            ]
-            if extra_args:
-                args += extra_args
+        args = [
+            '--front_dir_path', IMAGES_DIR,
+            '--back_dir_path', BACK_DIR,
+            '--double_sided_dir_path', DS_DIR,
+            '--output_path', os.path.join(output_dir, 'output.pdf'),
+            '--output_images',
+        ]
+        if extra_args:
+            args += extra_args
 
-            result = runner.invoke(cli, args)
-            assert result.exit_code == 0, (
-                f"CLI failed with exit code {result.exit_code}.\n"
-                f"Output: {result.output}\n"
-                f"Exception: {result.exception}"
-            )
+        result = runner.invoke(cli, args)
+        assert result.exit_code == 0, (
+            f"CLI failed with exit code {result.exit_code}.\n"
+            f"Output: {result.output}\n"
+            f"Exception: {result.exception}"
+        )
 
-            assert_images_match(output_dir, expected_dir)
+        assert_images_match(output_dir, expected_dir)
 
 
 @pytest.mark.parametrize("test_name,extra_args", TEST_CASES, ids=[n for n, _ in TEST_CASES])
@@ -120,13 +118,12 @@ def test_output_images(test_name, extra_args):
 def test_borderless_create_pdf():
     """Verify the CLI runs with --borderless and produces a PDF."""
     runner = CliRunner()
-    with tempfile.TemporaryDirectory() as output_dir, \
-         tempfile.TemporaryDirectory() as empty_ds_dir:
+    with tempfile.TemporaryDirectory() as output_dir:
         output_path = os.path.join(output_dir, 'game.pdf')
         result = runner.invoke(cli, [
             '--front_dir_path', 'test/basic/front',
             '--back_dir_path', 'test/basic/back',
-            '--double_sided_dir_path', empty_ds_dir,
+            '--double_sided_dir_path', DS_DIR,
             '--output_path', output_path,
             '--borderless',
         ])
@@ -137,13 +134,12 @@ def test_borderless_create_pdf():
 def test_borderless_a4_create_pdf():
     """Verify --borderless works with explicit paper size."""
     runner = CliRunner()
-    with tempfile.TemporaryDirectory() as output_dir, \
-         tempfile.TemporaryDirectory() as empty_ds_dir:
+    with tempfile.TemporaryDirectory() as output_dir:
         output_path = os.path.join(output_dir, 'game.pdf')
         result = runner.invoke(cli, [
             '--front_dir_path', 'test/basic/front',
             '--back_dir_path', 'test/basic/back',
-            '--double_sided_dir_path', empty_ds_dir,
+            '--double_sided_dir_path', DS_DIR,
             '--output_path', output_path,
             '--borderless',
             '--paper_size', 'a4',

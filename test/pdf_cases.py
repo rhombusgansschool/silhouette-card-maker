@@ -7,9 +7,10 @@ Adding a new test case here automatically covers both.
 import os
 
 # Shared fixture paths
-IMAGES_DIR = os.path.join('test', 'images')       # card images used as input
-BACK_DIR = os.path.join('test', 'basic', 'back')  # back image for all tests
-EXPECTED_DIR = os.path.join('test', 'expected_pdfs')  # pre-generated reference PNGs
+IMAGES_DIR = os.path.join('test', 'images')                    # card images used as input
+BACK_DIR = os.path.join('test', 'basic', 'back')               # back image for all tests
+DS_DIR = os.path.join('test', 'basic', 'double_sided')         # empty; no double-sided cards in tests
+EXPECTED_DIR = os.path.join('test', 'expected_pdfs')           # pre-generated reference PNGs
 
 # Each entry: (name, extra_cli_args)
 # - name: identifies the test and maps to a subdirectory in EXPECTED_DIR
@@ -57,9 +58,9 @@ TEST_CASES = [
     ('skip', ['--skip', '0', '--skip', '4']),
 
     # Borderless templates
-    ('borderless-letter-standard', ['--borderless', '--paper_size', 'letter', '--card_size', 'standard', '--only_fronts']),
-    ('borderless-a4-standard', ['--borderless', '--paper_size', 'a4', '--card_size', 'standard', '--only_fronts']),
-    ('borderless-letter-poker', ['--borderless', '--paper_size', 'letter', '--card_size', 'poker', '--only_fronts']),
+    ('borderless-letter-standard', ['--borderless', '--only_fronts']),
+    ('borderless-a4-standard', ['--borderless', '--paper_size', 'a4', '--only_fronts']),
+    ('borderless-letter-poker', ['--borderless', '--card_size', 'poker', '--only_fronts']),
     ('borderless-a4-poker', ['--borderless', '--paper_size', 'a4', '--card_size', 'poker', '--only_fronts']),
-    ('borderless-tabloid-standard', ['--borderless', '--paper_size', 'tabloid', '--card_size', 'standard', '--only_fronts']),
+    ('borderless-tabloid-standard', ['--borderless', '--paper_size', 'tabloid', '--only_fronts']),
 ]
