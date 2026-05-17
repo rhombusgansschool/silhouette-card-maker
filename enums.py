@@ -23,3 +23,8 @@ class Variant(str, Enum):
     """Template variant types."""
     DEFAULT = "default"
     BORDERLESS = "borderless"
+
+
+class Unit(str, Enum):
+    MM = "mm"
+    IN = "in"

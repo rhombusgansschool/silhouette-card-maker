@@ -37,7 +37,7 @@ import platform
 
 import click
 
-from enums import Orientation, Variant
+from enums import Orientation, Variant, Unit
 from utilities import load_layout_config, get_all_paper_size_names, resolve_paper_size_alias, LayoutConfig, template_name, BORDERLESS_EXPANSION_MM
 import size_convert
 import page_manager
@@ -635,7 +635,7 @@ class SilhouetteAutomation:
         output_studio3: str,
         paper_width: str,
         paper_height: str,
-        unit: str,
+        unit: Unit,
         orientation: Orientation = Orientation.LANDSCAPE,
         center: bool = True,
         registration: Optional[RegistrationSettings] = None,
@@ -667,10 +667,10 @@ class SilhouetteAutomation:
         # Convert page dimensions to the specified unit for Silhouette Studio.
         # layouts.json stores paper sizes as landscape (width > height).
         # For portrait, swap so width < height matches Silhouette Studio's expectation.
-        if unit == "mm":
+        if unit == Unit.MM:
             width_value = size_convert.size_to_mm(paper_width)
             height_value = size_convert.size_to_mm(paper_height)
-        else:  # unit == "in"
+        else:  # unit == Unit.IN
             width_value = size_convert.size_to_in(paper_width)
             height_value = size_convert.size_to_in(paper_height)
 
@@ -915,7 +915,7 @@ def get_orientation_for_dxf(paper_size: str | None, card_size: str | None, varia
     return Orientation.LANDSCAPE
 
 
-def get_max_length_for_dxf(paper_size: str | None, card_size: str | None, variant: Variant | None, config: LayoutConfig, unit: str) -> float | None:
+def get_max_length_for_dxf(paper_size: str | None, card_size: str | None, variant: Variant | None, config: LayoutConfig, unit: Unit) -> float | None:
     """Look up the max registration mark length for a paper/card/variant combination.
 
     Args:
@@ -923,7 +923,7 @@ def get_max_length_for_dxf(paper_size: str | None, card_size: str | None, varian
         card_size: Card size key (e.g. "poker"), or None.
         variant: Variant enum (Variant.DEFAULT or Variant.BORDERLESS), or None.
         config: Loaded layout config.
-        unit: "mm" or "in".
+        unit: Unit.MM or Unit.IN.
 
     Returns:
         Max length in the requested unit, or None if not available.
@@ -933,7 +933,7 @@ def get_max_length_for_dxf(paper_size: str | None, card_size: str | None, varian
         mm = size_convert.size_to_mm(layout_reg.length) if layout_reg is not None and layout_reg.length is not None else None
         if mm is None:
             return None
-        if unit == "in":
+        if unit == Unit.IN:
             return round(mm / 25.4, 4)
         return mm
 
@@ -961,7 +961,7 @@ def cli():
 @click.option("--orientation", type=click.Choice([o.value for o in Orientation], case_sensitive=False), default=Orientation.LANDSCAPE.value, show_default=True, help="Paper orientation.")
 @click.option("--no_center", is_flag=True, help="Don't center paths to page.")
 @click.option("--registration", is_flag=True, help="Enable registration marks.")
-@click.option("--unit", type=click.Choice(["mm", "in"], case_sensitive=False), required=True, help="Unit for registration mark values.")
+@click.option("--unit", type=click.Choice([u.value for u in Unit], case_sensitive=False), required=True, help="Unit for registration mark values.")
 @click.option("--reg_length", type=float, default=0, show_default=True, help="Registration mark length. 0 = minimum allowed by Silhouette Studio.")
 @click.option("--reg_thickness", type=float, default=0, show_default=True, help="Registration mark thickness. 0 = minimum allowed by Silhouette Studio.")
 @click.option("--reg_inset", type=float, default=0, show_default=True, help="Registration mark inset. 0 = minimum allowed by Silhouette Studio.")
@@ -971,6 +971,7 @@ def cli():
 def single(input_file, output_file, paper_size, orientation, no_center, registration, unit,
            reg_length, reg_thickness, reg_inset, action_delay, calibration_path, studio_path):
     """Convert a single DXF file to .studio3 with paper size setup and registration marks."""
+    unit = Unit(unit)
     orient = Orientation(orientation)
     reg_settings = None
     if registration:
@@ -1125,7 +1126,7 @@ def calibrate(studio_path):
 
 
 @cli.command()
-@click.option("--unit", type=click.Choice(["mm", "in"], case_sensitive=False), required=True, help="Unit for registration mark values.")
+@click.option("--unit", type=click.Choice([u.value for u in Unit], case_sensitive=False), required=True, help="Unit for registration mark values.")
 @click.option("--studio_path", default=DEFAULT_STUDIO_PATH, show_default=True, help="Path to Silhouette Studio executable.")
 @click.option("--action_delay", type=float, default=ACTION_DELAY, show_default=True, help="Delay between UI actions (seconds).")
 @click.option("--calibration_path", type=click.Path(), default=None, help="Path to calibration JSON.")
@@ -1133,6 +1134,7 @@ def calibrate(studio_path):
 @click.option("--dry_run", is_flag=True, help="List files that would be converted without running Silhouette Studio.")
 def batch(unit, studio_path, action_delay, calibration_path, generate_new, dry_run):
     """Batch convert all DXF files in cutting_templates/ to .studio3 with registration marks."""
+    unit = Unit(unit)
     out_path = TEMPLATES_DIR
     out_path.mkdir(parents=True, exist_ok=True)
 
@@ -1143,10 +1145,11 @@ def batch(unit, studio_path, action_delay, calibration_path, generate_new, dry_r
         dxf_files = []
         for ps, cards in config.layouts.items():
             for cs, variants in cards.items():
-                for var, layout_def in variants.items():
+                for var_str, layout_def in variants.items():
+                    var = Variant(var_str)
                     name = template_name(ps, cs, var, layout_def.version)
                     # Borderless templates go in borderless/ subdirectory
-                    if var == Variant.BORDERLESS.value:
+                    if var == Variant.BORDERLESS:
                         studio3_file = out_path / "borderless" / f"{name}.studio3"
                         dxf_file = out_path / "borderless" / "dxf" / f"{name}.dxf"
                     else:
@@ -1245,8 +1248,8 @@ def batch(unit, studio_path, action_delay, calibration_path, generate_new, dry_r
 
             # Convert registration mark values to the specified unit
             # Inset: always MIN_REG_INSET_MM (Silhouette Studio's minimum)
-            inset_value = page_manager.MIN_REG_INSET_MM if unit == "mm" else page_manager.MIN_REG_INSET_MM / 25.4
-            thickness_value = page_manager.MAX_REG_THICKNESS_MM if unit == "mm" else page_manager.MAX_REG_THICKNESS_MM / 25.4
+            inset_value = page_manager.MIN_REG_INSET_MM if unit == Unit.MM else page_manager.MIN_REG_INSET_MM / 25.4
+            thickness_value = page_manager.MAX_REG_THICKNESS_MM if unit == Unit.MM else page_manager.MAX_REG_THICKNESS_MM / 25.4
 
             # Registration marks: always enabled, thickness and inset in specified unit,
             # length set to the computed max for this layout (already in correct unit)

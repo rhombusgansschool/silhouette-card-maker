@@ -201,25 +201,18 @@ def get_all_specialty_layout_names(layout_config: LayoutConfig) -> List[str]:
     return sorted(layout_config.specialty_layouts.keys())
 
 
-def template_name(paper_size: str, card_size: str, variant: str | Variant, version: int) -> str:
+def template_name(paper_size: str, card_size: str, variant: Variant, version: int) -> str:
     """Compose the standard template name: {paper_size}-{card_size}-{variant}-v{version}.
 
     Note: 'default' variant is omitted from the name for backwards compatibility.
     Examples:
         - default: letter-bridge-v4
         - borderless: letter-bridge-borderless-v1
-
-    Args:
-        paper_size: Paper size key (e.g. "letter").
-        card_size: Card size key (e.g. "poker").
-        variant: Variant enum or string ("default" or "borderless").
-        version: Version number.
     """
-    variant_str = variant.value if isinstance(variant, Variant) else variant
-    if variant_str == "default":
+    if variant == Variant.DEFAULT:
         return f"{paper_size}-{card_size}-v{version}"
     else:
-        return f"{paper_size}-{card_size}-{variant_str}-v{version}"
+        return f"{paper_size}-{card_size}-{variant.value}-v{version}"
 
 
 # Known junk files across OSes

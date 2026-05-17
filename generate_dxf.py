@@ -59,26 +59,22 @@ paper_size_choices = get_all_paper_size_names(layout_config)
 def generate_single_dxf(
     card_size: str,
     paper_size: str,
-    variant: str | Variant,
+    variant: Variant,
     config: LayoutConfig,
     output_dir: Path,
 ) -> tuple[int, int, float]:
     """Generate a single DXF file for a paper/card/variant combination.
 
-    Args:
-        variant: Variant enum or string ("default" or "borderless")
-
     Returns:
         (num_cols, num_rows, max_length_mm) tuple.
     """
-    variant_str = variant.value if isinstance(variant, Variant) else variant
     card_def = config.card_sizes[card_size]
     paper_def = config.paper_sizes[paper_size]
-    layout_def = config.layouts[paper_size][card_size][variant_str]
+    layout_def = config.layouts[paper_size][card_size][variant.value]
     ppi = config.ppi
 
     # Use appropriate registration settings for variant
-    if variant_str == Variant.BORDERLESS.value:
+    if variant == Variant.BORDERLESS:
         variant_reg = config.defaults.registration.borderless
     else:
         variant_reg = config.defaults.registration.default
@@ -103,7 +99,7 @@ def generate_single_dxf(
     num_cols = len(x_pos)
     num_rows = len(y_pos)
 
-    name = template_name(paper_size, card_size, variant_str, version)
+    name = template_name(paper_size, card_size, variant, version)
 
     # Write to the specified output directory
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -120,7 +116,7 @@ def generate_single_dxf(
     )
 
     num_cards = num_cols * num_rows
-    print(f"  {paper_size} + {card_size} ({variant_str}): {num_cols}x{num_rows} ({num_cards} cards), max_length={computed.max_length_mm}mm -> {output_file}")
+    print(f"  {paper_size} + {card_size} ({variant}): {num_cols}x{num_rows} ({num_cards} cards), max_length={computed.max_length_mm}mm -> {output_file}")
     return num_cols, num_rows, computed.max_length_mm
 
 
@@ -372,11 +368,12 @@ def batch(generate_all, generate_new, optimize_all):
     # Iterate over all paper/card/variant combinations
     for ps, cards in config.layouts.items():
         for cs, variants in cards.items():
-            for variant, layout_def in variants.items():
+            for variant_str, layout_def in variants.items():
+                variant = Variant(variant_str)
                 name = template_name(ps, cs, variant, layout_def.version)
 
                 # Determine output directory based on variant
-                if variant == Variant.BORDERLESS.value:
+                if variant == Variant.BORDERLESS:
                     variant_dir = out.parent / "borderless" / "dxf"
                 else:
                     variant_dir = out
@@ -394,7 +391,7 @@ def batch(generate_all, generate_new, optimize_all):
                 # the 12x24 mat to ignore landscape orientation (GitHub issue #136).
                 # TODO (#136): Remove this restriction once all templates use unconstrained
                 # mode with portrait mat orientation.
-                if variant == Variant.BORDERLESS.value:
+                if variant == Variant.BORDERLESS:
                     paper_def = config.paper_sizes[ps]
                     actual_max_in = max(
                         size_convert.size_to_mm(paper_def.width),
@@ -407,9 +404,9 @@ def batch(generate_all, generate_new, optimize_all):
 
                 try:
                     num_cols, num_rows, ml_mm = generate_single_dxf(cs, ps, variant, config, variant_dir)
-                    raw_config["layouts"][ps][cs][variant]["num_rows"] = num_rows
-                    raw_config["layouts"][ps][cs][variant]["num_cols"] = num_cols
-                    raw_config["layouts"][ps][cs][variant]["registration"] = {"length": f"{ml_mm}mm"}
+                    raw_config["layouts"][ps][cs][variant_str]["num_rows"] = num_rows
+                    raw_config["layouts"][ps][cs][variant_str]["num_cols"] = num_cols
+                    raw_config["layouts"][ps][cs][variant_str]["registration"] = {"length": f"{ml_mm}mm"}
                     generated += 1
                 except Exception as e:
                     print(f"  Error: {ps} + {cs} ({variant}): {e}")
@@ -474,13 +471,14 @@ def generate_all_optimized(config: LayoutConfig, out: Path):
         for card_size, variants in cards.items():
             card_def = config.card_sizes[card_size]
 
-            for variant, layout_def in variants.items():
+            for variant_str, layout_def in variants.items():
+                variant = Variant(variant_str)
                 # For borderless templates on papers that need the 12x24 mat, skip if the
                 # virtual paper size (+13mm each dimension) would exceed the 12x24 mat.
                 # See batch() and GitHub issue #136 for full explanation.
                 # TODO (#136): Remove this restriction once all templates use unconstrained
                 # mode with portrait mat orientation.
-                if variant == Variant.BORDERLESS.value:
+                if variant == Variant.BORDERLESS:
                     actual_max_in = max(
                         size_convert.size_to_mm(paper_def.width),
                         size_convert.size_to_mm(paper_def.height),
@@ -491,7 +489,7 @@ def generate_all_optimized(config: LayoutConfig, out: Path):
 
                 try:
                     # Use appropriate registration settings for variant
-                    if variant == Variant.BORDERLESS.value:
+                    if variant == Variant.BORDERLESS:
                         variant_reg = config.defaults.registration.borderless
                     else:
                         variant_reg = config.defaults.registration.default
@@ -532,16 +530,16 @@ def generate_all_optimized(config: LayoutConfig, out: Path):
                         updated += 1
 
                     # Update layout definition
-                    raw_config["layouts"][paper_size][card_size][variant]["orientation"] = best_orientation.value
-                    raw_config["layouts"][paper_size][card_size][variant]["version"] = version
-                    raw_config["layouts"][paper_size][card_size][variant]["num_rows"] = num_rows
-                    raw_config["layouts"][paper_size][card_size][variant]["num_cols"] = num_cols
-                    raw_config["layouts"][paper_size][card_size][variant]["registration"] = {"length": f"{best_computed.max_length_mm}mm"}
+                    raw_config["layouts"][paper_size][card_size][variant_str]["orientation"] = best_orientation.value
+                    raw_config["layouts"][paper_size][card_size][variant_str]["version"] = version
+                    raw_config["layouts"][paper_size][card_size][variant_str]["num_rows"] = num_rows
+                    raw_config["layouts"][paper_size][card_size][variant_str]["num_cols"] = num_cols
+                    raw_config["layouts"][paper_size][card_size][variant_str]["registration"] = {"length": f"{best_computed.max_length_mm}mm"}
 
                     name = template_name(paper_size, card_size, variant, version)
 
                     # Determine output directory based on variant
-                    if variant == Variant.BORDERLESS.value:
+                    if variant == Variant.BORDERLESS:
                         variant_dir = out.parent / "borderless" / "dxf"
                     else:
                         variant_dir = out
