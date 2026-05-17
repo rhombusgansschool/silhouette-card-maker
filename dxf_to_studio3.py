@@ -573,9 +573,8 @@ class SilhouetteAutomation:
     def flip_vertically(self):
         """Select all objects and flip them vertically via the right-click context menu.
 
-        POLYLINE entities (used for smooth rounded-rectangle cutting paths) are
-        imported by Silhouette Studio with a vertical flip. This corrects the
-        orientation by selecting all objects and applying Flip Vertically through
+        DXF files are imported by Silhouette Studio with a vertical flip. This corrects
+        the orientation by selecting all objects and applying Flip Vertically through
         the cutting path right-click context menu.
         """
         print("  Flipping vertically...")
@@ -647,7 +646,7 @@ class SilhouetteAutomation:
         1. Open DXF
         2. Page setup (cutting mat, media size, orientation, dimensions)
         3. Center paths
-        4. Flip vertically (corrects vertical flip from POLYLINE DXF import)
+        4. Flip vertically (corrects vertical flip from DXF import)
         5. Set registration marks
         6. Save as .studio3
 
@@ -693,7 +692,7 @@ class SilhouetteAutomation:
         if center:
             self.center_to_page()
 
-        # POLYLINE entities are vertically flipped on import into Silhouette Studio.
+        # DXF files are imported into Silhouette Studio with a vertical flip.
         # Flip vertically after centering to correct the orientation.
         self.flip_vertically()
 
@@ -1072,7 +1071,6 @@ def calibrate(studio_path):
     click.echo()
 
     calibration = {
-        "version": "1.0",
         "silhouette_studio_version": version,
         "window": window_rect,
         "elements": {},

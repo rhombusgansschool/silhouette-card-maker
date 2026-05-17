@@ -5,15 +5,31 @@ weight: 1
 
 Borderless templates artificially increase the maximum cutting area and maximum number of cards per sheet.
 
+For example, `letter` paper with `standard` card size results in a 4x2 layout:
+
+![4x2 layout](../../static/images/letter-standard_layout.png)
+
+However, with borderless templates, we can have a 3x3 layout:
+
+![3x3 layout](../../static/images/letter-standard-borderless_layout.png)
+
 ## How It Works
 
 Silhouette Studio limits the minimum inset of registration marks to 10mm.
 
-A smaller inset translates to more cutting area and more cards per sheet.
+![Inset settings](../../static/images/inset_settings.png)
 
-We cannot reduce the inset below the minimum inset, so instead, we use custom paper sizes in Silhouette Studio.
+A smaller inset would allow us to have a greater cutting area and more cards per sheet. Compare the following insets and cutting areas:
 
-By adding 6.5mm to the paper width and height in Silhouette Studio, we can essentially trick the software into effectively using a 3.5mm inset.
+![Inset comparison](../../static/images/inset_comparison.png)
+
+We cannot reduce the inset below 10mm as that is a hard limit set by Silhouette Studio. Instead, we can circumnavigate the limit by using custom media sizes.
+
+By adding 13mm to the paper width and height settings, we can effectively use a 3.5mm inset.
+
+<!-- ![Inset change](../../static/images/inset_change.png) -->
+
+The inset is still set at 10mm in Silhouette Studio but the software believes we are using a larger piece of paper.
 
 ## Benefits
 
@@ -45,14 +61,34 @@ The table below shows all possible borderless paper and card size combinations, 
 
 ## Usage
 
+Use the `--borderless` option to generate a borderless PDF.
+
 ```sh
 python create_pdf.py --borderless
 ```
 
-Get your PDF at `game/output/game.pdf`.
+Get your borderless PDF at `game/output/game.pdf`.
 
 Use the appropriate borderless cutting template in [cutting_templates/borderless/](https://github.com/Alan-Cha/silhouette-card-maker/tree/borderless_templates4/cutting_templates/borderless).
 
-While placing the sheet onto the mat, maintain 6.5mm of clearance. In other words, instead of aligning the sheet with the grid on the mat, ensure that there is 6.5mm gap around the sheet.
+While placing the paper onto the mat, maintain 6.5mm of clearance from the edge of the grid. Recall that the software believes we are using paper that is 13mm larger in height and width. Therefore, instead of aligning the paper against the grid, we need to maintain 6.5mm (13mm/2) of clearance.
 
-If you encounter registration issues, you can also put extra paper behind the registration marks.
+***
+
+To improve registration reliability, you may need something to hide stray marks and to provide more white space around the registration marks.
+
+For example, I use masking tape to hide the text in the top left and the grid lines. I place the tape 7.5mm from the grid so I can overlap my paper over the tape.
+
+![Borderless mat preparation](../../static/images/borderless_mat_with_tape.jpg)
+
+![Borderless mat placement](../../static/images/borderless_placement.jpg)
+
+Notice the overlap. A clear gap may cause registration issues.
+
+![Borderless mat overlap](../../static/images/borderless_overlap.jpg)
+
+The rest is the same!
+
+![Borderless inside machine](../../static/images/borderless_machine.jpg)
+
+![Borderless completed](../../static/images/borderless_completed.jpg)
