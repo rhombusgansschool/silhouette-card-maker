@@ -1443,7 +1443,7 @@ class TestAddFrontBackPages:
             page_width=300, page_height=400,
             ppi_ratio=1.0, template='test_v1',
             only_fronts=False, label=None,
-            orientation=Orientation.LANDSCAPE, inset_px=10
+            orientation=Orientation.LANDSCAPE, label_margin_px=10, borderless=False
         )
         assert len(pages) == 2
         assert pages[0].size == front.size
@@ -1463,7 +1463,7 @@ class TestAddFrontBackPages:
             page_width=300, page_height=400,
             ppi_ratio=1.0, template='test_v1',
             only_fronts=True, label=None,
-            orientation=Orientation.LANDSCAPE, inset_px=10
+            orientation=Orientation.LANDSCAPE, label_margin_px=10, borderless=False
         )
         assert len(pages) == 1
         assert pages[0].size == front.size
@@ -1485,14 +1485,14 @@ class TestAddFrontBackPages:
             page_width=300, page_height=400,
             ppi_ratio=1.0, template='test_v1',
             only_fronts=False, label=None,
-            orientation=Orientation.PORTRAIT, inset_px=10
+            orientation=Orientation.PORTRAIT, label_margin_px=10, borderless=False
         )
         add_front_back_pages(
             front2, back2, pages,
             page_width=300, page_height=400,
             ppi_ratio=1.0, template='test_v1',
             only_fronts=False, label=None,
-            orientation=Orientation.PORTRAIT, inset_px=10
+            orientation=Orientation.PORTRAIT, label_margin_px=10, borderless=False
         )
         assert len(pages) == 4
 
@@ -1510,7 +1510,7 @@ class TestAddFrontBackPages:
             page_width=300, page_height=400,
             ppi_ratio=1.0, template='test_v1',
             only_fronts=False, label='my_deck',
-            orientation=Orientation.PORTRAIT, inset_px=10
+            orientation=Orientation.PORTRAIT, label_margin_px=10, borderless=False
         )
         assert len(pages) == 2
 
