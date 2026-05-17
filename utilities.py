@@ -145,6 +145,15 @@ def load_layout_config() -> LayoutConfig:
         return LayoutConfig(**json.load(f))
 
 
+# Borderless mode tricks Silhouette Studio into using a smaller effective inset than its
+# 10mm minimum (MIN_REG_INSET_MM) by inflating the declared paper size. The software
+# still places registration marks at 10mm from the declared edge, but since the declared
+# paper is larger than the real sheet, the marks land closer to the actual paper edge.
+#
+# BORDERLESS_INSET_MM: the effective inset on the real paper (from layouts.json defaults).
+# BORDERLESS_EXPANSION_MM: how much to add to each paper dimension in Silhouette Studio
+#   so that the 10mm studio inset becomes BORDERLESS_INSET_MM on the real sheet.
+#   Formula: each side gains (MIN_REG_INSET_MM - BORDERLESS_INSET_MM), times 2 for both sides.
 _layout_config = load_layout_config()
 BORDERLESS_INSET_MM = size_convert.size_to_mm(_layout_config.defaults.registration.borderless.inset)
 BORDERLESS_EXPANSION_MM = (page_manager.MIN_REG_INSET_MM - BORDERLESS_INSET_MM) * 2
@@ -608,7 +617,7 @@ def draw_outline(
                 width=1,
             )
 
-def add_front_back_pages(front_page: Image.Image, back_page: Image.Image, pages: List[Image.Image], page_width: int, page_height: int, ppi_ratio: float, template: str, only_fronts: bool, label: str, orientation: Orientation, label_margin_px: int, borderless: bool = False):
+def add_front_back_pages(front_page: Image.Image, back_page: Image.Image, pages: List[Image.Image], page_width: int, page_height: int, ppi_ratio: float, template: str, only_fronts: bool, label: str, orientation: Orientation, label_margin_px: int, borderless: bool):
     font = ImageFont.truetype(os.path.join(asset_directory, 'arial.ttf'), 40 * ppi_ratio)
 
     num_sheet = len(pages) + 1
@@ -870,11 +879,6 @@ def generate_pdf(
 
         lr = spec.registration or RegistrationSettings()
         effective_inset = lr.inset or default_reg.inset
-        effective_thickness = lr.thickness or default_reg.thickness
-        effective_length = lr.length or default_reg.length
-        pdf_width = paper_size_def.width
-        pdf_height = paper_size_def.height
-        pdf_inset = effective_inset
 
     else:
         # Resolve aliases
@@ -915,13 +919,10 @@ def generate_pdf(
         else:
             effective_inset = lr.inset or layout_config.defaults.registration.default.inset
 
-        effective_thickness = lr.thickness or default_reg.thickness
-        effective_length = lr.length or default_reg.length
-
         template = template_name(paper_size, card_size, variant, version)
-        pdf_width = paper_size_def.width
-        pdf_height = paper_size_def.height
-        pdf_inset = effective_inset
+
+    effective_thickness = lr.thickness or default_reg.thickness
+    effective_length = lr.length or default_reg.length
 
     # Corner exclusion zone = configured mark length + padding constant
     total_exclusion_mm = size_convert.size_to_mm(default_reg.length) + page_manager.REG_PADDING_MM
@@ -929,9 +930,9 @@ def generate_pdf(
         orientation=orientation,
         card_width=card_size_def.width,
         card_height=card_size_def.height,
-        paper_width=pdf_width,
-        paper_height=pdf_height,
-        inset=pdf_inset,
+        paper_width=paper_size_def.width,
+        paper_height=paper_size_def.height,
+        inset=effective_inset,
         length=f"{total_exclusion_mm}mm",
         ppi=layout_config.ppi,
     )
@@ -942,11 +943,6 @@ def generate_pdf(
     page_height_px = computed.paper_height_px
     x_pos = computed.x_pos
     y_pos = computed.y_pos
-
-    # For borderless, use the computed max registration length so marks
-    # fill the available space instead of using the tiny 5mm default.
-    if borderless:
-        effective_length = f"{computed.max_length_mm}mm"
 
     # Determine the amount of x and y crop
     crop = parse_crop_string(crop_string, card_width_px, card_height_px)
@@ -978,7 +974,7 @@ def generate_pdf(
     # The baseline PPI is 300
     ppi_ratio = ppi / 300
 
-    inset_px = size_convert.size_to_pixel(pdf_inset, layout_config.ppi)
+    inset_px = size_convert.size_to_pixel(effective_inset, layout_config.ppi)
     thickness_px = size_convert.size_to_pixel(effective_thickness, layout_config.ppi)
     if borderless:
         # Different margin for borderless because of space constraints
@@ -988,9 +984,9 @@ def generate_pdf(
 
     # Load an image with the registration marks
     with page_manager.generate_reg_mark(
-        pdf_width,
-        pdf_height,
-        pdf_inset,
+        paper_size_def.width,
+        paper_size_def.height,
+        effective_inset,
         effective_thickness,
         effective_length,
         layout_config.ppi,

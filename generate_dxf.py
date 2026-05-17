@@ -331,24 +331,18 @@ def single(output_file, paper_size, card_size, card_height, card_width, card_rad
 
 @cli.command()
 @click.option("--all", "generate_all", is_flag=True, help="Regenerate all DXF files for every paper/card/variant combination.")
-@click.option("--new", "generate_new", is_flag=True, help="Generate DXF files only for missing templates (default behavior).")
 @click.option("--optimize", "optimize_all", is_flag=True, help="Generate DXF files for all combinations, optimizing orientation for maximum cards.")
-def batch(generate_all, generate_new, optimize_all):
+def batch(generate_all, optimize_all):
     """Batch generate DXF files to cutting_templates/ directory structure.
 
-    By default, generates only missing templates (--new behavior).
+    By default, generates only missing templates. Use --all to regenerate
+    everything, or --optimize to re-optimize orientations for all layouts.
     """
     config = load_layout_config()
     out = OUTPUT_DIR
 
-    # Validate that at most one flag is provided
-    flags = [generate_all, generate_new, optimize_all]
-    if sum(flags) > 1:
-        raise click.UsageError("Provide at most one of: --all, --new, or --optimize")
-
-    # Default to --new if no flags provided
-    if sum(flags) == 0:
-        generate_new = True
+    if generate_all and optimize_all:
+        raise click.UsageError("Provide at most one of: --all or --optimize")
 
     if optimize_all:
         generate_all_optimized(config, out)
@@ -380,7 +374,7 @@ def batch(generate_all, generate_new, optimize_all):
 
                 check_file = variant_dir / f"{name}.dxf"
 
-                if generate_new and check_file.exists():
+                if not generate_all and check_file.exists():
                     skipped += 1
                     continue
 
@@ -422,7 +416,7 @@ def batch(generate_all, generate_new, optimize_all):
 
     print()
     summary = f"Generated {generated} DXF files ({errors} errors)"
-    if generate_new:
+    if not generate_all:
         summary += f", skipped {skipped} existing"
     print(summary)
 
@@ -552,11 +546,7 @@ def generate_all_optimized(config: LayoutConfig, out: Path):
                         output_path=str(output_file),
                     )
 
-                    change_note = ""
-                    if best_orientation != layout_def.orientation:
-                        change_note = f" (was {layout_def.orientation.value})"
-
-                    print(f"  {paper_size} + {card_size} ({variant}): {num_cols}x{num_rows} ({best_count} cards), max_length={best_computed.max_length_mm}mm -> {output_file}{change_note}")
+                    print(f"  {paper_size} + {card_size} ({variant}): {num_cols}x{num_rows} ({best_count} cards), max_length={best_computed.max_length_mm}mm -> {output_file}")
                     generated += 1
 
                 except Exception as e:
