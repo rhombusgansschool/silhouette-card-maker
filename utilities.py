@@ -60,6 +60,7 @@ class CardSizeDef(BaseModel):
     height: str
     radius: Optional[str] = None
     aliases: Optional[List[str]] = None
+    shape: Optional[str] = None
 
 
 
