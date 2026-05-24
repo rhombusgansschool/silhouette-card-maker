@@ -63,4 +63,9 @@ TEST_CASES = [
     ('borderless-letter-poker', ['--borderless', '--card_size', 'poker', '--only_fronts']),
     ('borderless-a4-poker', ['--borderless', '--paper_size', 'a4', '--card_size', 'poker', '--only_fronts']),
     ('borderless-tabloid-standard', ['--borderless', '--paper_size', 'tabloid', '--only_fronts']),
+
+    # Flipped registration marks
+    ('flip_registration', ['--flip_registration', '--only_fronts']),
+    ('flip_registration-tabloid', ['--flip_registration', '--paper_size', 'tabloid', '--only_fronts']),
+    ('flip_registration-registration4', ['--flip_registration', '--registration', '4', '--only_fronts']),
 ]

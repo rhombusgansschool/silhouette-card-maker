@@ -159,6 +159,17 @@ python create_pdf.py --registration 4
 
 However, Silhouette Cameo 5 Alpha users can still use the 3-corner registration mark pattern by setting machine to **Cameo 5** in Silhouette Studio.
 
+## Flipping Registration Orientation
+
+Registration marks are normally placed according to the orientation of the page (portrait or landscape). If you have rotated your cutting template to accommodate your machine's requirements, the marks may no longer align. Use `--flip_registration` to generate marks for the opposite orientation without changing the card layout.
+
+```sh
+python create_pdf.py --flip_registration
+```
+
+> [!NOTE]
+> `--flip_registration` is a workaround for machines that require a rotated cutting template. A more permanent solution (configurable `--orientation`) is planned.
+
 ## CLI Options
 
 ```
@@ -180,6 +191,9 @@ Options:
   --paper_size [letter|tabloid|a4|a3|arch_b|ansi_a|ansi_b]
                                   The desired paper size.  [default: letter]
   --registration [3|4]            The desired registration.  [default: 3]
+  --flip_registration             Flip the orientation used for registration
+                                  marks. Useful when your cutting template is
+                                  rotated relative to the PDF orientation.
   --only_fronts                   Only use the card fronts, exclude the card
                                   backs.
   --fit [stretch|crop]            How to fit images to card size. 'stretch'

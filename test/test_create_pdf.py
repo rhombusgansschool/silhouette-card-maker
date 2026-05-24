@@ -161,3 +161,38 @@ def test_borderless_with_specialty_errors():
             '--specialty', 'letter-commander',
         ])
         assert result.exit_code != 0
+
+
+# --- Flip Registration Tests ---
+
+def test_flip_registration_create_pdf():
+    """Verify the CLI runs with --flip_registration and produces a PDF."""
+    runner = CliRunner()
+    with tempfile.TemporaryDirectory() as output_dir:
+        output_path = os.path.join(output_dir, 'game.pdf')
+        result = runner.invoke(cli, [
+            '--front_dir_path', 'test/basic/front',
+            '--back_dir_path', 'test/basic/back',
+            '--double_sided_dir_path', DS_DIR,
+            '--output_path', output_path,
+            '--flip_registration',
+        ])
+        assert result.exit_code == 0, f"CLI failed: {result.output}\n{result.exception}"
+        assert os.path.exists(output_path)
+
+
+def test_flip_registration_registration4_create_pdf():
+    """Verify --flip_registration works combined with --registration 4."""
+    runner = CliRunner()
+    with tempfile.TemporaryDirectory() as output_dir:
+        output_path = os.path.join(output_dir, 'game.pdf')
+        result = runner.invoke(cli, [
+            '--front_dir_path', 'test/basic/front',
+            '--back_dir_path', 'test/basic/back',
+            '--double_sided_dir_path', DS_DIR,
+            '--output_path', output_path,
+            '--flip_registration',
+            '--registration', '4',
+        ])
+        assert result.exit_code == 0, f"CLI failed: {result.output}\n{result.exception}"
+        assert os.path.exists(output_path)

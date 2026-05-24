@@ -26,6 +26,7 @@ specialty_choices = get_all_specialty_layout_names(layout_config)
 @click.option("--card_size", default="standard", type=click.Choice(card_size_choices, case_sensitive=False), show_default=True, help="The desired card size.")
 @click.option("--paper_size", default="letter", type=click.Choice(paper_size_choices, case_sensitive=False), show_default=True, help="The desired paper size.")
 @click.option("--registration", default=Registration.THREE.value, type=click.Choice([t.value for t in Registration], case_sensitive=False), show_default=True, help="The desired registration.")
+@click.option("--flip_registration", default=False, is_flag=True, help="Flip the orientation used for registration marks. Useful when your cutting template is rotated relative to the PDF orientation.")
 @click.option("--specialty", default=None, type=click.Choice(specialty_choices, case_sensitive=False), help="Use a specialty layout. Overrides card_size, paper_size, and registration settings.")
 
 @click.option("--only_fronts", default=False, is_flag=True, help="Only use the card fronts, exclude the card backs.")
@@ -67,7 +68,8 @@ def cli(
     load_offset,
     label,
     show_outline,
-    borderless
+    borderless,
+    flip_registration,
 ):
     generate_pdf(
         front_dir_path,
@@ -91,6 +93,7 @@ def cli(
         show_outline,
         specialty=specialty,
         borderless=borderless,
+        flip_registration=flip_registration,
     )
 
 if __name__ == '__main__':

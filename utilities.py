@@ -785,6 +785,7 @@ def generate_pdf(
     show_outline: bool = False,
     specialty: Optional[str] = None,
     borderless: bool = False,
+    flip_registration: bool = False,
 ):
     # Sanity checks for the different directories
     f_path = Path(front_dir_path)
@@ -983,6 +984,9 @@ def generate_pdf(
         label_margin_px = math.floor((inset_px - thickness_px * 2) * ppi_ratio)
 
     # Load an image with the registration marks
+    reg_orientation = (
+        Orientation.PORTRAIT if orientation == Orientation.LANDSCAPE else Orientation.LANDSCAPE
+    ) if flip_registration else orientation
     with page_manager.generate_reg_mark(
         paper_size_def.width,
         paper_size_def.height,
@@ -991,7 +995,7 @@ def generate_pdf(
         effective_length,
         layout_config.ppi,
         registration,
-        orientation,
+        reg_orientation,
     ) as reg_im:
         reg_im = reg_im.resize([math.floor(reg_im.width * ppi_ratio), math.floor(reg_im.height * ppi_ratio)])
 
