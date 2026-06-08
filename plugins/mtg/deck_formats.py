@@ -8,8 +8,6 @@ from enum import Enum
 from typing import Callable, Tuple
 from xml.etree import ElementTree as ET
 
-from pyparsing import line
-
 from plugins.mtg.patterns import DECKSTATS_PATTERN, MOXFIELD_PATTERN
 
 import cloudscraper
@@ -427,7 +425,7 @@ def parse_url(deck_url, handle_card: Callable) -> None:
             handle_card(index, name, set_code, collector_number, quantity)
         except Exception as e:
             print(f'Error: {e}')
-            error_lines.append((line, e))
+            error_lines.append((name, e))
 
     if len(error_lines) > 0:
         print(f'Errors: {error_lines}')

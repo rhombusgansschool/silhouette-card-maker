@@ -306,6 +306,13 @@ def ensure_output_directory(output_path: str) -> None:
     if parent:
         os.makedirs(parent, exist_ok=True)
 
+def get_page_pdf_path(output_path: str, page_number: int) -> str:
+    """Return the single-page PDF path for a requested output PDF path."""
+    root, ext = os.path.splitext(output_path)
+    if not ext:
+        ext = ".pdf"
+    return f"{root}_page{page_number}{ext}"
+
 def get_image_file_paths(dir_path: str) -> List[str]:
     result = []
 
@@ -1154,7 +1161,7 @@ def generate_pdf(
                 print(f'Loaded x offset: {saved_offset.x_offset}, y offset: {saved_offset.y_offset}, angle offset: {saved_offset.angle_offset}')
                 pages = offset_images(pages, saved_offset.x_offset, saved_offset.y_offset, ppi, saved_offset.angle_offset)
 
-        # Save the pages array as a PDF
+        # Save the pages array
         if output_images:
             for index, page in enumerate(pages):
                 page.save(os.path.join(output_path, f'page{index + 1}.png'), resolution=math.floor(300 * ppi_ratio), speed=0, subsampling=0, quality=quality)
@@ -1162,8 +1169,13 @@ def generate_pdf(
             print(f'Generated images: {output_path}')
 
         else:
-            pages[0].save(output_path, format='PDF', save_all=True, append_images=pages[1:], resolution=math.floor(300 * ppi_ratio), speed=0, subsampling=0, quality=quality)
-            print(f'Generated PDF: {output_path}')
+            output_paths = []
+            for index, page in enumerate(pages):
+                page_output_path = get_page_pdf_path(output_path, index + 1)
+                page.save(page_output_path, format='PDF', resolution=math.floor(300 * ppi_ratio), speed=0, subsampling=0, quality=quality)
+                output_paths.append(page_output_path)
+
+            print(f'Generated PDFs: {", ".join(output_paths)}')
 
 
 class OffsetData(BaseModel):

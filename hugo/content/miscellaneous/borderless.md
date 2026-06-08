@@ -67,7 +67,7 @@ Use the `--borderless` option to generate a borderless PDF.
 python create_pdf.py --borderless
 ```
 
-Get your borderless PDF at `game/output/game.pdf`.
+Get your borderless PDFs at `game/output/game_page1.pdf`, `game/output/game_page2.pdf`, and so on.
 
 Use the appropriate borderless cutting template in [cutting_templates/borderless/](https://github.com/Alan-Cha/silhouette-card-maker/tree/main/cutting_templates/borderless).
 

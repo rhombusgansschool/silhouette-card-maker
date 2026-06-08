@@ -18,7 +18,7 @@ from pdf_cases import IMAGES_DIR, BACK_DIR, DS_DIR, EXPECTED_DIR, TEST_CASES
 # --- Smoke Test ---
 
 def test_basic_create_pdf():
-    """Verify the CLI runs without error and produces a PDF."""
+    """Verify the CLI runs without error and produces one PDF per page."""
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as output_dir:
         output_path = os.path.join(output_dir, 'game.pdf')
@@ -29,7 +29,9 @@ def test_basic_create_pdf():
             '--output_path', output_path,
         ])
         assert result.exit_code == 0
-        assert os.path.exists(output_path)
+        assert not os.path.exists(output_path)
+        assert os.path.exists(os.path.join(output_dir, 'game_page1.pdf'))
+        assert os.path.exists(os.path.join(output_dir, 'game_page2.pdf'))
 
 
 # --- Output Image Tests ---
@@ -116,7 +118,7 @@ def test_output_images(test_name, extra_args):
 # --- Borderless Tests ---
 
 def test_borderless_create_pdf():
-    """Verify the CLI runs with --borderless and produces a PDF."""
+    """Verify the CLI runs with --borderless and produces one PDF per page."""
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as output_dir:
         output_path = os.path.join(output_dir, 'game.pdf')
@@ -128,11 +130,13 @@ def test_borderless_create_pdf():
             '--borderless',
         ])
         assert result.exit_code == 0, f"CLI failed: {result.output}\n{result.exception}"
-        assert os.path.exists(output_path)
+        assert not os.path.exists(output_path)
+        assert os.path.exists(os.path.join(output_dir, 'game_page1.pdf'))
+        assert os.path.exists(os.path.join(output_dir, 'game_page2.pdf'))
 
 
 def test_borderless_a4_create_pdf():
-    """Verify --borderless works with explicit paper size."""
+    """Verify --borderless works with explicit paper size and split PDFs."""
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as output_dir:
         output_path = os.path.join(output_dir, 'game.pdf')
@@ -145,7 +149,9 @@ def test_borderless_a4_create_pdf():
             '--paper_size', 'a4',
         ])
         assert result.exit_code == 0, f"CLI failed: {result.output}\n{result.exception}"
-        assert os.path.exists(output_path)
+        assert not os.path.exists(output_path)
+        assert os.path.exists(os.path.join(output_dir, 'game_page1.pdf'))
+        assert os.path.exists(os.path.join(output_dir, 'game_page2.pdf'))
 
 
 def test_borderless_with_specialty_errors():

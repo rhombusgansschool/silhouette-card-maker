@@ -20,7 +20,7 @@ specialty_choices = get_all_specialty_layout_names(layout_config)
 @click.option("--front_dir_path", default=front_directory, show_default=True, help="The path to the directory containing the card fronts.")
 @click.option("--back_dir_path", default=back_directory, show_default=True, help="The path to the directory containing one or more card backs.")
 @click.option("--double_sided_dir_path", default=double_sided_directory, show_default=True, help="The path to the directory containing card backs for double-sided cards.")
-@click.option("--output_path", default=default_output_path, show_default=True, help="The desired path to the output PDF.")
+@click.option("--output_path", default=default_output_path, show_default=True, help="The desired path to the output PDF. Each page is saved as a separate PDF using this filename as the base.")
 @click.option("--output_images", default=False, is_flag=True, help="Create images instead of a PDF.")
 
 @click.option("--card_size", default="standard", type=click.Choice(card_size_choices, case_sensitive=False), show_default=True, help="The desired card size.")

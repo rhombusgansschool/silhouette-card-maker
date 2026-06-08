@@ -215,7 +215,7 @@ This will create a PDF for `a4` paper size and `standard` card size. The default
 >
 > `create_pdf.py` offers many options including creating **double-sided cards**. To learn more, see [here]({{% ref "../docs/create.md" %}}).
 
-You can find the PDF in `game/output/game.pdf` and it should look similar to the following:
+You can find the PDFs in `game/output/game_page1.pdf`, `game/output/game_page2.pdf`, and so on. The first one should look similar to the following:
 
 ![PDF output](/images/create_pdf.png)
 
