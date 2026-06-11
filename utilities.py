@@ -4,6 +4,8 @@ import json
 import math
 import filetype
 import os
+import shutil
+import subprocess
 import re
 from glob import glob
 from pathlib import Path
@@ -312,6 +314,39 @@ def get_page_pdf_path(output_path: str, page_number: int) -> str:
     if not ext:
         ext = ".pdf"
     return f"{root}_page{page_number}{ext}"
+
+def delete_existing_page_pdfs(output_path: str) -> None:
+    """Remove stale split-page PDFs for the requested output PDF path."""
+    root, ext = os.path.splitext(output_path)
+    if not ext:
+        ext = ".pdf"
+
+    page_file_pattern = re.compile(rf"^{re.escape(os.path.basename(root))}_page\d+{re.escape(ext)}$", re.IGNORECASE)
+    for path in glob(f"{root}_page*{ext}"):
+        if os.path.isfile(path) and page_file_pattern.fullmatch(os.path.basename(path)):
+            os.remove(path)
+
+def open_pdf_paths_in_edge(pdf_paths: List[str]) -> None:
+    """Open generated PDFs in Microsoft Edge when Edge is available."""
+    edge_command = shutil.which("msedge") or shutil.which("microsoft-edge")
+    if edge_command is None:
+        edge_candidates = [
+            Path(os.environ.get("ProgramFiles", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+            Path(os.environ.get("ProgramFiles(x86)", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+            Path(os.environ.get("LocalAppData", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+        ]
+        edge_command = next((str(path) for path in edge_candidates if path.is_file()), None)
+
+    if edge_command is None:
+        print("Could not open PDFs in Edge: Microsoft Edge was not found.")
+        return
+
+    abs_paths = [os.path.abspath(path) for path in pdf_paths]
+    try:
+        subprocess.Popen([edge_command, *abs_paths], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f'Opened PDFs in Edge: {", ".join(abs_paths)}')
+    except OSError as e:
+        print(f"Could not open PDFs in Edge: {e}")
 
 def get_image_file_paths(dir_path: str) -> List[str]:
     result = []
@@ -776,6 +811,7 @@ def generate_pdf(
     ds_dir_path: str,
     output_path: str,
     output_images: bool,
+    open_in_edge: bool,
     card_size: str,
     paper_size: str,
     registration: Registration,
@@ -1169,13 +1205,35 @@ def generate_pdf(
             print(f'Generated images: {output_path}')
 
         else:
-            output_paths = []
+            pdf_resolution = math.floor(300 * ppi_ratio)
+            delete_existing_page_pdfs(output_path)
+            pages[0].save(
+                output_path,
+                format='PDF',
+                save_all=True,
+                append_images=pages[1:],
+                resolution=pdf_resolution,
+                speed=0,
+                subsampling=0,
+                quality=quality,
+            )
+
+            output_paths = [output_path]
+            odd_page_output_paths = []
             for index, page in enumerate(pages):
-                page_output_path = get_page_pdf_path(output_path, index + 1)
-                page.save(page_output_path, format='PDF', resolution=math.floor(300 * ppi_ratio), speed=0, subsampling=0, quality=quality)
-                output_paths.append(page_output_path)
+                page_number = index + 1
+                if page_number % 2 == 0:
+                    continue
+
+                page_output_path = get_page_pdf_path(output_path, page_number)
+                page.save(page_output_path, format='PDF', resolution=pdf_resolution, speed=0, subsampling=0, quality=quality)
+                odd_page_output_paths.append(page_output_path)
+
+            output_paths.extend(odd_page_output_paths)
 
             print(f'Generated PDFs: {", ".join(output_paths)}')
+            if open_in_edge:
+                open_pdf_paths_in_edge(output_paths)
 
 
 class OffsetData(BaseModel):

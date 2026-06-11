@@ -65,7 +65,7 @@ python create_pdf.py --paper_size a4
 
 {{< /tabs >}}
 
-Get your PDFs at `game/output/game_page1.pdf`, `game/output/game_page2.pdf`, and so on.
+Get the combined PDF at `game/output/game.pdf`. Odd pages are also saved separately at `game/output/game_page1.pdf`, `game/output/game_page3.pdf`, and so on. The generated PDFs open in Microsoft Edge by default.
 
 ## Plugins
 
@@ -172,11 +172,14 @@ Options:
   --double_sided_dir_path TEXT    The path to the directory containing card
                                   backs for double-sided cards.  [default:
                                   game\double_sided]
-  --output_path TEXT              The desired path to the output PDF. Each
-                                  page is saved as a separate PDF using this
-                                  filename as the base.
+  --output_path TEXT              The desired path to the combined output PDF.
+                                  Odd pages are also saved as separate PDFs
+                                  using this filename as the base.
                                   [default: game\output\game.pdf]
   --output_images                 Create images instead of a PDF.
+  --open_in_edge / --no_open_in_edge
+                                  Open generated PDFs in Microsoft Edge.
+                                  [default: open_in_edge]
   --card_size [standard|poker|bridge|american_mini|bridge_square|business|catan|credit|domino|domino_square|euro_business|euro_mini|euro_poker|japanese|jumbo|micro|mini|mini_american|mini_euro|photo|standard_double|tarot|70mm_square]
                                   The desired card size.  [default: standard]
   --paper_size [letter|tabloid|a4|a3|arch_b|ansi_a|ansi_b]
