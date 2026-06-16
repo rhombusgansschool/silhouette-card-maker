@@ -16,13 +16,13 @@ EXPECTED_DIR = os.path.join('test', 'expected_pdfs')           # pre-generated r
 # - name: identifies the test and maps to a subdirectory in EXPECTED_DIR
 # - extra_cli_args: additional CLI arguments passed to create_pdf
 TEST_CASES = [
-    ('default', []),
-    ('only_fronts', ['--only_fronts']),
+    ('default', ['--paper_size', 'letter']),
+    ('only_fronts', ['--paper_size', 'letter', '--only_fronts']),
 
     # Card sizes
-    ('bridge', ['--card_size', 'bridge', '--only_fronts']),
-    ('poker', ['--card_size', 'poker', '--only_fronts']),
-    ('japanese', ['--card_size', 'japanese', '--only_fronts']),
+    ('bridge', ['--paper_size', 'letter', '--card_size', 'bridge', '--only_fronts']),
+    ('poker', ['--paper_size', 'letter', '--card_size', 'poker', '--only_fronts']),
+    ('japanese', ['--paper_size', 'letter', '--card_size', 'japanese', '--only_fronts']),
 
     # Paper sizes
     ('tabloid', ['--paper_size', 'tabloid', '--only_fronts']),
@@ -34,33 +34,33 @@ TEST_CASES = [
     ('a4-bridge', ['--paper_size', 'a4', '--card_size', 'bridge', '--only_fronts']),
 
     # Other options
-    ('ppi600', ['--ppi', '600']),
+    ('ppi600', ['--paper_size', 'letter', '--ppi', '600']),
     ('a4-ppi600', ['--paper_size', 'a4', '--ppi', '600', '--only_fronts']),
 
-    ('ppi600-quality100', ['--ppi', '600', '--quality', '100']),
+    ('ppi600-quality100', ['--paper_size', 'letter', '--ppi', '600', '--quality', '100']),
 
-    ('quality100', ['--quality', '100']),
-    ('quality75', ['--quality', '75', '--only_fronts']),
-    ('quality50', ['--quality', '50', '--only_fronts']),
+    ('quality100', ['--paper_size', 'letter', '--quality', '100']),
+    ('quality75', ['--paper_size', 'letter', '--quality', '75', '--only_fronts']),
+    ('quality50', ['--paper_size', 'letter', '--quality', '50', '--only_fronts']),
 
-    ('registration4', ['--registration', '4']),
+    ('registration4', ['--paper_size', 'letter', '--registration', '4']),
     ('registration4-tabloid', ['--registration', '4', '--paper_size', 'tabloid']),
 
-    ('show_outline', ['--show_outline']),
-    ('show_outline-domino', ['--show_outline', '--card_size', 'domino']),
+    ('show_outline', ['--paper_size', 'letter', '--show_outline']),
+    ('show_outline-domino', ['--paper_size', 'letter', '--show_outline', '--card_size', 'domino']),
 
-    ('label', ['--label', 'Test Label', '--only_fronts']),
+    ('label', ['--paper_size', 'letter', '--label', 'Test Label', '--only_fronts']),
     ('label-tabloid', ['--label', 'Test Label', '--paper_size', 'tabloid', '--only_fronts']),
 
-    ('crop', ['--crop', '3mm', '--only_fronts']),
-    ('extend_corners', ['--extend_corners', '10', '--only_fronts']),
-    ('fit_crop', ['--card_size', 'domino', '--fit', 'crop', '--only_fronts']),
-    ('skip', ['--skip', '0', '--skip', '4']),
+    ('crop', ['--paper_size', 'letter', '--crop', '3mm', '--only_fronts']),
+    ('extend_corners', ['--paper_size', 'letter', '--extend_corners', '10', '--only_fronts']),
+    ('fit_crop', ['--paper_size', 'letter', '--card_size', 'domino', '--fit', 'crop', '--only_fronts']),
+    ('skip', ['--paper_size', 'letter', '--skip', '0', '--skip', '4']),
 
     # Borderless templates
-    ('borderless-letter-standard', ['--borderless', '--only_fronts']),
+    ('borderless-letter-standard', ['--borderless', '--paper_size', 'letter', '--only_fronts']),
     ('borderless-a4-standard', ['--borderless', '--paper_size', 'a4', '--only_fronts']),
-    ('borderless-letter-poker', ['--borderless', '--card_size', 'poker', '--only_fronts']),
+    ('borderless-letter-poker', ['--borderless', '--paper_size', 'letter', '--card_size', 'poker', '--only_fronts']),
     ('borderless-a4-poker', ['--borderless', '--paper_size', 'a4', '--card_size', 'poker', '--only_fronts']),
     ('borderless-tabloid-standard', ['--borderless', '--paper_size', 'tabloid', '--only_fronts']),
 ]

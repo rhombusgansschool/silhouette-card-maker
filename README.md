@@ -183,14 +183,14 @@ Put your back image in the `game/back/` folder.
 
 Run the script.
 
-**Letter size paper:**
+**A4 size paper:**
 ```sh
 python create_pdf.py
 ```
 
-**A4 size paper:**
+**Letter size paper:**
 ```sh
-python create_pdf.py --paper_size a4
+python create_pdf.py --paper_size letter
 ```
 
 Get the combined PDF at `game/output/game.pdf`. Odd pages are also saved separately at `game/output/game_page1.pdf`, `game/output/game_page3.pdf`, and so on. The generated PDFs open in Microsoft Edge by default.
@@ -269,7 +269,7 @@ Options:
   --card_size [standard|poker|bridge|american_mini|bridge_square|business|catan|credit|domino|domino_square|euro_business|euro_mini|euro_poker|japanese|jumbo|micro|mini|mini_american|mini_euro|photo|standard_double|tarot|70mm_square]
                                   The desired card size.  [default: standard]
   --paper_size [letter|tabloid|a4|a3|arch_b|ansi_a|ansi_b]
-                                  The desired paper size.  [default: letter]
+                                  The desired paper size.  [default: a4]
   --registration [3|4]            The desired registration.  [default: 3]
   --only_fronts                   Only use the card fronts, exclude the card
                                   backs.

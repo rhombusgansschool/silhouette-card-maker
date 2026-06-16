@@ -50,7 +50,7 @@ Put your back image in the `game/back/` folder.
 
 ### Run the script
 
-{{< tabs items="Letter size paper,A4 size paper" defaultIndex="0" >}}
+{{< tabs items="A4 size paper,Letter size paper" defaultIndex="0" >}}
 
   {{< tab >}}
 ```sh
@@ -59,7 +59,7 @@ python create_pdf.py
   {{< /tab >}}
   {{< tab >}}
 ```sh
-python create_pdf.py --paper_size a4
+python create_pdf.py --paper_size letter
 ```
   {{< /tab >}}
 
@@ -183,7 +183,7 @@ Options:
   --card_size [standard|poker|bridge|american_mini|bridge_square|business|catan|credit|domino|domino_square|euro_business|euro_mini|euro_poker|japanese|jumbo|micro|mini|mini_american|mini_euro|photo|standard_double|tarot|70mm_square]
                                   The desired card size.  [default: standard]
   --paper_size [letter|tabloid|a4|a3|arch_b|ansi_a|ansi_b]
-                                  The desired paper size.  [default: letter]
+                                  The desired paper size.  [default: a4]
   --registration [3|4]            The desired registration.  [default: 3]
   --only_fronts                   Only use the card fronts, exclude the card
                                   backs.
