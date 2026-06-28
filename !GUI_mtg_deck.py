@@ -1,17 +1,30 @@
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext
+import webbrowser
+from tkinter import filedialog, messagebox, scrolledtext
+from urllib.parse import quote_plus
 
-from PIL import Image, ImageTk
+from PIL import Image, ImageOps, ImageTk
+
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+except ImportError:  # The button fallback still works if the optional package is absent.
+    DND_FILES = None
+    TkinterDnD = None
 
 
 REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
 OUTPUT_PDF = os.path.join(REPO_ROOT, "game", "output", "game.pdf")
+CLEANUP_DIR = os.path.join(REPO_ROOT, "z_deletes_fromCardmaker")
 BASIC_LAND_NAMES = ("Mountain", "Island", "Forest", "Swamp", "Plains")
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+TkRoot = TkinterDnD.Tk if TkinterDnD is not None else tk.Tk
 
 # ─── Workflow overview ───────────────────────────────────────────────────────
 # 1. User enters a Moxfield deck URL and clicks "Run Workflow".
@@ -25,7 +38,8 @@ BASIC_LAND_NAMES = ("Mountain", "Island", "Forest", "Swamp", "Plains")
 #    a red ✕ overlay.  If more than 24 token images exist, a "Next page"
 #    button appears at the bottom.  "Delete all ✕" removes every marked
 #    image from disk. "Continue" also deletes any marked images, then closes
-#    the window and resumes the workflow.
+#    the window and resumes the workflow. The token-artwork routine also lets
+#    the user right-click a token to preview and confirm replacement artwork.
 # 5. A second review window shows every non-token card with the same paging,
 #    marking, deletion, and Continue controls.
 # 6. When "Change Artwork before .pdf" was selected, execution PAUSES again
@@ -99,6 +113,92 @@ def script_python():
     return executable
 
 
+def _downloads_folder() -> str:
+    """Return the user's Downloads folder, including relocated Windows folders."""
+    if sys.platform.startswith("win"):
+        try:
+            import winreg
+
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
+            downloads_guid = "{374DE290-123F-4565-9164-39C4925E467B}"
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                value, _ = winreg.QueryValueEx(key, downloads_guid)
+            return os.path.abspath(os.path.expandvars(value))
+        except (OSError, ImportError):
+            pass
+    return os.path.abspath(os.path.join(os.path.expanduser("~"), "Downloads"))
+
+
+def _list_download_pngs(folder: str) -> list:
+    """Return direct-child PNG files as absolute path strings."""
+    try:
+        return sorted(
+            os.path.abspath(os.path.join(folder, name))
+            for name in os.listdir(folder)
+            if name.lower().endswith(".png")
+            and os.path.isfile(os.path.join(folder, name))
+        )
+    except OSError:
+        return []
+
+
+def _token_name_from_path(path: str) -> str:
+    """Turn a fetched filename such as ``6CatWarrior_token1.png`` into a name."""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    match = re.fullmatch(r"\d+(.+)_token\d+", stem, flags=re.IGNORECASE)
+    compact_name = match.group(1) if match else stem
+    compact_name = re.sub(r"_token\d*$", "", compact_name, flags=re.IGNORECASE)
+    compact_name = compact_name.replace("_", " ")
+    compact_name = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", compact_name)
+    return compact_name.strip() or stem
+
+
+def _token_search_url(path: str) -> str:
+    query = quote_plus(f"{_token_name_from_path(path)} type:token")
+    return f"https://scryfall.com/search?as=grid&order=name&q={query}"
+
+
+def _replace_image_file(source: str, target: str) -> None:
+    """Convert *source* to the target's image format and atomically replace it."""
+    if os.path.normcase(os.path.abspath(source)) == os.path.normcase(os.path.abspath(target)):
+        raise ValueError("Choose a different image from the original token artwork.")
+
+    target_extension = os.path.splitext(target)[1].lower()
+    image_format = Image.registered_extensions().get(target_extension)
+    if image_format is None:
+        raise ValueError(f"Unsupported target image format: {target_extension}")
+
+    fd, temporary_path = tempfile.mkstemp(
+        prefix=".token-artwork-",
+        suffix=target_extension,
+        dir=os.path.dirname(target),
+    )
+    os.close(fd)
+    try:
+        with Image.open(source) as opened:
+            image = ImageOps.exif_transpose(opened)
+            image.load()
+            if image_format == "JPEG" and image.mode not in ("RGB", "L"):
+                image = image.convert("RGB")
+            image.save(temporary_path, format=image_format)
+        os.replace(temporary_path, target)
+    finally:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
+
+
+def _move_download_to_cleanup(path: str) -> str:
+    """Move a used download into the project cleanup folder without overwriting."""
+    os.makedirs(CLEANUP_DIR, exist_ok=True)
+    stem, extension = os.path.splitext(os.path.basename(path))
+    destination = os.path.join(CLEANUP_DIR, f"{stem}{extension}")
+    counter = 2
+    while os.path.exists(destination):
+        destination = os.path.join(CLEANUP_DIR, f"{stem}_{counter}{extension}")
+        counter += 1
+    return shutil.move(path, destination)
+
+
 class TokenReviewWindow:
     """Modal pause window for token or non-token images before PDF creation.
 
@@ -121,11 +221,13 @@ class TokenReviewWindow:
         folder: str,
         done_event: threading.Event,
         include_tokens: bool = True,
+        allow_token_artwork: bool = False,
     ):
         self._parent = parent
         self._folder = folder
         self._done_event = done_event
         self._include_tokens = include_tokens
+        self._allow_token_artwork = include_tokens and allow_token_artwork
         self._marked: set = set()
         self._page = 0
         self._thumb_refs: list = []
@@ -254,9 +356,10 @@ class TokenReviewWindow:
 
             photo = None
             try:
-                img = Image.open(path)
-                img.thumbnail((self.CARD_W, self.CARD_H), Image.LANCZOS)
-                photo = ImageTk.PhotoImage(img)
+                with Image.open(path) as opened:
+                    img = ImageOps.exif_transpose(opened)
+                    img.thumbnail((self.CARD_W, self.CARD_H), Image.LANCZOS)
+                    photo = ImageTk.PhotoImage(img.copy())
                 canvas.create_image(
                     self.CARD_W // 2, self.CARD_H // 2, image=photo, anchor="center"
                 )
@@ -279,6 +382,8 @@ class TokenReviewWindow:
                 canvas.configure(highlightbackground=self._parent.colors["error"])
 
             canvas.bind("<Button-1>", self._on_card_click)
+            if self._allow_token_artwork:
+                canvas.bind("<Button-3>", self._on_card_right_click)
 
     # ── interactions ─────────────────────────────────────────────────────────
 
@@ -297,6 +402,10 @@ class TokenReviewWindow:
             canvas.configure(highlightbackground=self._parent.colors["error"])
         self._update_delete_btn()
 
+    def _on_card_right_click(self, event: tk.Event):  # type: ignore[type-arg]
+        canvas: tk.Canvas = event.widget
+        TokenArtworkWindow(self, canvas._path)  # type: ignore[attr-defined]
+
     def _update_delete_btn(self):
         if self._delete_btn is None:
             return
@@ -312,6 +421,14 @@ class TokenReviewWindow:
         self._delete_btn = None
 
         total_pages = max(1, -(-len(self._images) // self.PAGE_SIZE))  # ceiling division
+
+        if self._allow_token_artwork:
+            tk.Label(
+                self._btn_frame,
+                text="Right-click a token to change its artwork",
+                bg=self._parent.colors["bg"], fg=self._parent.colors["muted"],
+                font=("Segoe UI", 9),
+            ).pack(side=tk.LEFT, padx=(0, 12))
 
         if self._page > 0:
             tk.Button(
@@ -400,7 +517,277 @@ class TokenReviewWindow:
         self._done_event.set()
 
 
-class MtgDeckGui(tk.Tk):
+class TokenArtworkWindow:
+    """Preview dropped/downloaded art and replace one token after confirmation."""
+
+    PREVIEW_W = 300
+    PREVIEW_H = 410
+    WATCH_INTERVAL_MS = 3000
+
+    def __init__(self, owner: TokenReviewWindow, token_path: str):
+        self._owner = owner
+        self._parent = owner._parent
+        self._token_path = token_path
+        self._downloads_folder = _downloads_folder()
+        self._download_pngs = _list_download_pngs(self._downloads_folder)
+        self._known_download_pngs = {
+            os.path.normcase(path) for path in self._download_pngs
+        }
+        self._candidate = None
+        self._preview_ref = None
+        self._watch_job = None
+        self._always_accept = tk.BooleanVar(
+            value=self._parent.always_accept_token_artwork
+        )
+
+        win = tk.Toplevel(owner._win)
+        self._win = win
+        win.title(f"Token artwork - {_token_name_from_path(token_path)}")
+        win.configure(bg=self._parent.colors["bg"])
+        win.geometry("520x690")
+        win.resizable(False, False)
+        win.transient(owner._win)
+        win.grab_set()
+        win.protocol("WM_DELETE_WINDOW", self._close)
+
+        tk.Label(
+            win,
+            text=f"Replace {_token_name_from_path(token_path)} artwork",
+            bg=self._parent.colors["bg"], fg=self._parent.colors["text"],
+            font=("Segoe UI", 14, "bold"),
+        ).pack(padx=20, pady=(18, 4))
+        tk.Label(
+            win,
+            text=(
+                "Drop an image below, or download a PNG from the Scryfall window.\n"
+                "New PNG files in Downloads are detected every 3 seconds."
+            ),
+            bg=self._parent.colors["bg"], fg=self._parent.colors["muted"],
+            font=("Segoe UI", 9), justify=tk.CENTER,
+        ).pack(padx=20, pady=(0, 12))
+
+        drop_frame = tk.Frame(
+            win,
+            width=self.PREVIEW_W,
+            height=self.PREVIEW_H,
+            bg=self._parent.colors["field"],
+            relief=tk.GROOVE,
+            borderwidth=2,
+        )
+        drop_frame.pack(padx=20)
+        drop_frame.pack_propagate(False)
+        self._drop_zone = tk.Label(
+            drop_frame,
+            text="Drag & drop an image here",
+            bg=self._parent.colors["field"], fg=self._parent.colors["muted"],
+            font=("Segoe UI", 11, "bold"),
+            compound=tk.CENTER,
+        )
+        self._drop_zone.pack(fill=tk.BOTH, expand=True)
+
+        if DND_FILES is not None:
+            try:
+                self._drop_zone.drop_target_register(DND_FILES)
+                self._drop_zone.dnd_bind("<<Drop>>", self._on_drop)
+            except tk.TclError:
+                pass
+
+        self._status = tk.StringVar(value="Waiting for an image...")
+        tk.Label(
+            win,
+            textvariable=self._status,
+            bg=self._parent.colors["bg"], fg=self._parent.colors["muted"],
+            font=("Segoe UI", 9), wraplength=470,
+        ).pack(fill=tk.X, padx=20, pady=8)
+
+        buttons = tk.Frame(win, bg=self._parent.colors["bg"])
+        buttons.pack(fill=tk.X, padx=20, pady=(0, 16))
+        tk.Button(
+            buttons, text="Choose image...", command=self._choose_image,
+            bg=self._parent.colors["panel"], fg=self._parent.colors["text"],
+            activebackground=self._parent.colors["field"],
+            activeforeground=self._parent.colors["text"],
+            relief=tk.FLAT, font=("Segoe UI", 9), padx=10, pady=7,
+            cursor="hand2",
+        ).pack(side=tk.LEFT)
+        tk.Button(
+            buttons, text="Cancel", command=self._close,
+            bg=self._parent.colors["panel"], fg=self._parent.colors["text"],
+            activebackground=self._parent.colors["field"],
+            activeforeground=self._parent.colors["text"],
+            relief=tk.FLAT, font=("Segoe UI", 9), padx=10, pady=7,
+            cursor="hand2",
+        ).pack(side=tk.RIGHT)
+        self._confirm_button = tk.Button(
+            buttons, text="Use this artwork", command=self._confirm,
+            bg=self._parent.colors["accent"], fg="#07111f",
+            activebackground=self._parent.colors["accent_hover"],
+            activeforeground="#07111f", relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"), padx=12, pady=7,
+            cursor="hand2", state=tk.DISABLED,
+        )
+        self._confirm_button.pack(side=tk.RIGHT, padx=(0, 8))
+
+        tk.Checkbutton(
+            win,
+            text="Always accept new token artwork this instance",
+            variable=self._always_accept,
+            command=self._remember_always_accept,
+            bg=self._parent.colors["bg"],
+            fg=self._parent.colors["text"],
+            activebackground=self._parent.colors["bg"],
+            activeforeground=self._parent.colors["text"],
+            selectcolor=self._parent.colors["field"],
+            font=("Segoe UI", 9),
+            cursor="hand2",
+        ).pack(anchor="w", padx=20, pady=(0, 14))
+
+        # Let the dialog paint before the browser takes focus.
+        win.after(150, self._open_search_and_start_watcher)
+
+    def _open_search_and_start_watcher(self):
+        search_url = _token_search_url(self._token_path)
+        try:
+            opened = webbrowser.open(search_url, new=2)
+        except Exception as exc:
+            messagebox.showwarning(
+                "Could not open Scryfall",
+                f"Open this page manually:\n{search_url}\n\n{exc}",
+                parent=self._win,
+            )
+        else:
+            if not opened:
+                messagebox.showwarning(
+                    "Could not open Scryfall",
+                    f"Open this page manually:\n{search_url}",
+                    parent=self._win,
+                )
+        self._watch_job = self._win.after(
+            self.WATCH_INTERVAL_MS, self._check_downloads
+        )
+
+    def _check_downloads(self):
+        self._download_pngs = _list_download_pngs(self._downloads_folder)
+        new_paths = [
+            path for path in self._download_pngs
+            if os.path.normcase(path) not in self._known_download_pngs
+        ]
+
+        if new_paths:
+            existing_new_paths = [path for path in new_paths if os.path.isfile(path)]
+            if existing_new_paths:
+                newest = max(existing_new_paths, key=lambda path: os.path.getmtime(path))
+                if self._set_candidate(newest, "New PNG detected in Downloads"):
+                    self._known_download_pngs.update(
+                        os.path.normcase(path) for path in new_paths
+                    )
+                    if self._always_accept.get():
+                        self._confirm()
+                        return
+
+        if self._win.winfo_exists():
+            self._watch_job = self._win.after(
+                self.WATCH_INTERVAL_MS, self._check_downloads
+            )
+
+    def _on_drop(self, event):
+        try:
+            paths = list(self._win.tk.splitlist(event.data))
+        except (tk.TclError, TypeError):
+            paths = []
+        valid_paths = [
+            os.path.abspath(path) for path in paths
+            if os.path.isfile(path)
+            and os.path.splitext(path)[1].lower() in IMAGE_EXTENSIONS
+        ]
+        if not valid_paths:
+            messagebox.showerror(
+                "Unsupported drop",
+                "Drop a PNG, JPG, JPEG, WEBP, or BMP image file.",
+                parent=self._win,
+            )
+            return "break"
+        self._set_candidate(valid_paths[0], "Dropped image")
+        return "break"
+
+    def _choose_image(self):
+        path = filedialog.askopenfilename(
+            parent=self._win,
+            title="Choose replacement token artwork",
+            filetypes=[
+                ("Image files", "*.png *.jpg *.jpeg *.webp *.bmp"),
+                ("All files", "*.*"),
+            ],
+        )
+        if path:
+            self._set_candidate(path, "Selected image")
+
+    def _remember_always_accept(self):
+        self._parent.always_accept_token_artwork = self._always_accept.get()
+
+    def _set_candidate(self, path: str, source_label: str):
+        try:
+            with Image.open(path) as opened:
+                image = ImageOps.exif_transpose(opened)
+                image.thumbnail((self.PREVIEW_W - 12, self.PREVIEW_H - 12), Image.LANCZOS)
+                preview = ImageTk.PhotoImage(image.copy())
+        except Exception as exc:
+            messagebox.showerror(
+                "Invalid image", f"Could not preview {os.path.basename(path)}:\n{exc}",
+                parent=self._win,
+            )
+            return False
+
+        self._candidate = os.path.abspath(path)
+        self._preview_ref = preview
+        self._drop_zone.configure(image=preview, text="")
+        self._status.set(f"{source_label}: {os.path.basename(path)}")
+        self._confirm_button.configure(state=tk.NORMAL)
+        return True
+
+    def _confirm(self):
+        if self._candidate is None:
+            return
+        try:
+            _replace_image_file(self._candidate, self._token_path)
+            moved_to = None
+            if (
+                os.path.splitext(self._candidate)[1].lower() == ".png"
+                and os.path.normcase(os.path.dirname(self._candidate))
+                == os.path.normcase(os.path.abspath(self._downloads_folder))
+            ):
+                moved_to = _move_download_to_cleanup(self._candidate)
+        except Exception as exc:
+            messagebox.showerror("Artwork replacement failed", str(exc), parent=self._win)
+            return
+
+        self._owner._render_page()
+        self._parent.append_log(
+            f"Replaced token artwork: {os.path.basename(self._token_path)}\n"
+        )
+        if moved_to:
+            self._parent.append_log(
+                f"Moved used download to {os.path.relpath(moved_to, REPO_ROOT)}\n"
+            )
+        self._close()
+
+    def _close(self):
+        if self._watch_job is not None:
+            try:
+                self._win.after_cancel(self._watch_job)
+            except tk.TclError:
+                pass
+            self._watch_job = None
+        try:
+            self._win.grab_release()
+        except tk.TclError:
+            pass
+        self._win.destroy()
+        if self._owner._win.winfo_exists():
+            self._owner._win.grab_set()
+
+
+class MtgDeckGui(TkRoot):
     def __init__(self):
         super().__init__()
 
@@ -421,6 +808,7 @@ class MtgDeckGui(tk.Tk):
         }
 
         self.configure(bg=self.colors["bg"])
+        self.always_accept_token_artwork = False
         self._configure_grid()
         self._build_widgets()
 
@@ -513,6 +901,24 @@ class MtgDeckGui(tk.Tk):
         )
         self.artwork_button.grid(row=1, column=2, sticky="e", padx=(12, 0), pady=(8, 0))
 
+        self.token_artwork_button = tk.Button(
+            form,
+            text="Wanna change token artwork?",
+            command=lambda: self.run_workflow(change_token_artwork=True),
+            bg=self.colors["panel"],
+            fg=self.colors["text"],
+            activebackground=self.colors["field"],
+            activeforeground=self.colors["text"],
+            relief=tk.FLAT,
+            font=("Segoe UI", 10, "bold"),
+            padx=18,
+            pady=9,
+            cursor="hand2",
+        )
+        self.token_artwork_button.grid(
+            row=2, column=2, sticky="e", padx=(12, 0), pady=(8, 0)
+        )
+
         log_frame = tk.Frame(self, bg=self.colors["panel"], padx=12, pady=12)
         log_frame.grid(row=2, column=0, sticky="nsew", padx=24, pady=(0, 18))
         log_frame.columnconfigure(0, weight=1)
@@ -543,7 +949,7 @@ class MtgDeckGui(tk.Tk):
         )
         status_bar.grid(row=3, column=0, sticky="ew")
 
-    def run_workflow(self, change_artwork=False):
+    def run_workflow(self, change_artwork=False, change_token_artwork=False):
         deck_url = self.deck_url.get().strip()
         if not deck_url:
             messagebox.showerror("Deck URL required", "Enter a deck URL first.")
@@ -551,17 +957,20 @@ class MtgDeckGui(tk.Tk):
 
         self.run_button.configure(state=tk.DISABLED, text="Running...")
         self.artwork_button.configure(state=tk.DISABLED)
+        self.token_artwork_button.configure(state=tk.DISABLED)
         self.status.set("Running fetch, PDF generation, and open steps...")
         self.clear_log()
 
         worker = threading.Thread(
             target=self._run_workflow_thread,
-            args=(deck_url, change_artwork),
+            args=(deck_url, change_artwork, change_token_artwork),
             daemon=True,
         )
         worker.start()
 
-    def _run_workflow_thread(self, deck_url, change_artwork=False):
+    def _run_workflow_thread(
+        self, deck_url, change_artwork=False, change_token_artwork=False
+    ):
         front_folder = os.path.join(REPO_ROOT, "game", "front")
 
         try:
@@ -592,7 +1001,15 @@ class MtgDeckGui(tk.Tk):
             #           block this background thread until the user clicks Continue
             self.append_log("\nOpening token review window\u2026\n")
             review_done = threading.Event()
-            self.after(0, lambda: TokenReviewWindow(self, front_folder, review_done))
+            self.after(
+                0,
+                lambda: TokenReviewWindow(
+                    self,
+                    front_folder,
+                    review_done,
+                    allow_token_artwork=change_token_artwork,
+                ),
+            )
             review_done.wait()
             self.append_log("Token review complete.\n")
 
@@ -703,11 +1120,13 @@ class MtgDeckGui(tk.Tk):
         self.status.set("Done. PDF opened.")
         self.run_button.configure(state=tk.NORMAL, text="Run Workflow")
         self.artwork_button.configure(state=tk.NORMAL)
+        self.token_artwork_button.configure(state=tk.NORMAL)
 
     def _set_failed(self, message):
         self.status.set("Failed. See log for details.")
         self.run_button.configure(state=tk.NORMAL, text="Run Workflow")
         self.artwork_button.configure(state=tk.NORMAL)
+        self.token_artwork_button.configure(state=tk.NORMAL)
         messagebox.showerror("Workflow failed", message)
 
     def _format_command(self, command):

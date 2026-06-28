@@ -27,3 +27,6 @@ cutting_templates/borderless/dxf/
 
 hugo/public/
 .vscode/launch.json
+
+# Used token artwork downloads are retained here instead of being deleted.
+z_deletes_fromCardmaker/
