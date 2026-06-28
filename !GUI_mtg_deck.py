@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -10,21 +11,29 @@ from PIL import Image, ImageTk
 
 REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
 OUTPUT_PDF = os.path.join(REPO_ROOT, "game", "output", "game.pdf")
+BASIC_LAND_NAMES = ("Mountain", "Island", "Forest", "Swamp", "Plains")
 
 # ─── Workflow overview ───────────────────────────────────────────────────────
 # 1. User enters a Moxfield deck URL and clicks "Run Workflow".
 # 2. All existing files in game/front/ are deleted so the folder is clean.
 # 3. plugins/mtg/fetch.py downloads every card image (including tokens)
-#    into game/front/.
+#    into game/front/. All copies of Mountain, Island, Forest, Swamp, and
+#    Plains are then removed automatically and the counts are logged.
 # 4. Execution PAUSES — a Token Review window opens.  It scans game/front/
 #    for any image whose filename contains "token" and shows thumbnails in
 #    an 8-column × 3-row grid (24 cards per page).  Clicking a card toggles
 #    a red ✕ overlay.  If more than 24 token images exist, a "Next page"
 #    button appears at the bottom.  "Delete all ✕" removes every marked
-#    image from disk.  "Continue" closes the window and resumes the workflow.
-# 5. create_pdf.py lays out all remaining images in game/front/ into an A4
+#    image from disk. "Continue" also deletes any marked images, then closes
+#    the window and resumes the workflow.
+# 5. A second review window shows every non-token card with the same paging,
+#    marking, deletion, and Continue controls.
+# 6. When "Change Artwork before .pdf" was selected, execution PAUSES again
+#    so the user can replace artwork in game/front/. The normal workflow skips
+#    this pause.
+# 7. create_pdf.py lays out all remaining images in game/front/ into an A4
 #    PDF saved to game/output/game.pdf.
-# 6. The finished PDF is opened with the system default viewer.
+# 8. The finished PDF is opened with the system default viewer.
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -42,6 +51,45 @@ def _clean_folder(folder: str) -> int:
     return removed
 
 
+def _remove_basic_lands(folder: str) -> dict:
+    """Remove every downloaded copy of the five basic lands."""
+    removed = {land: 0 for land in BASIC_LAND_NAMES}
+    patterns = {
+        land: re.compile(rf"^\d+{land}\d+\.[^.]+$", re.IGNORECASE)
+        for land in BASIC_LAND_NAMES
+    }
+    errors = []
+
+    try:
+        filenames = os.listdir(folder)
+    except OSError as exc:
+        raise RuntimeError(f"Cannot scan basic lands in {folder}: {exc}") from exc
+
+    for filename in filenames:
+        land = next(
+            (name for name, pattern in patterns.items() if pattern.fullmatch(filename)),
+            None,
+        )
+        if land is None:
+            continue
+
+        path = os.path.join(folder, filename)
+        if not os.path.isfile(path):
+            continue
+
+        try:
+            os.remove(path)
+        except OSError as exc:
+            errors.append(f"{filename}: {exc}")
+        else:
+            removed[land] += 1
+
+    if errors:
+        raise RuntimeError("Failed to remove basic lands:\n" + "\n".join(errors))
+
+    return removed
+
+
 def script_python():
     executable = sys.executable
     if sys.platform.startswith("win") and executable.lower().endswith("pythonw.exe"):
@@ -52,12 +100,13 @@ def script_python():
 
 
 class TokenReviewWindow:
-    """Modal pause window: review token images before PDF creation.
+    """Modal pause window for token or non-token images before PDF creation.
 
-    Shows every image in *folder* whose filename contains "token" as
+    Shows matching images from *folder* as
     thumbnails in an 8-column × 3-row grid (PAGE_SIZE = 24 per page).
     Clicking a card toggles a red ✕ overlay.  "Delete all ✕" removes marked
-    images from disk.  "Continue" signals *done_event* and closes the window.
+    images from disk. "Continue" deletes any remaining marked images, signals
+    *done_event*, and closes the window.
     """
 
     COLS = 8
@@ -66,20 +115,32 @@ class TokenReviewWindow:
     CARD_W = 80
     CARD_H = 112
 
-    def __init__(self, parent: "MtgDeckGui", folder: str, done_event: threading.Event):
+    def __init__(
+        self,
+        parent: "MtgDeckGui",
+        folder: str,
+        done_event: threading.Event,
+        include_tokens: bool = True,
+    ):
         self._parent = parent
         self._folder = folder
         self._done_event = done_event
+        self._include_tokens = include_tokens
         self._marked: set = set()
         self._page = 0
         self._thumb_refs: list = []
         self._delete_btn = None
 
-        self._images = self._find_token_images()
+        self._images = self._find_review_images()
 
         win = tk.Toplevel(parent)
         self._win = win
-        win.title(f"Review Token Cards  \u2014  {len(self._images)} token(s) found")
+        if include_tokens:
+            win.title(f"Review Token Cards  \u2014  {len(self._images)} token(s) found")
+            self._empty_message = "No token images found."
+        else:
+            win.title(f"Review All Cards  \u2014  {len(self._images)} card(s) found")
+            self._empty_message = "No non-token card images found."
         win.configure(bg=parent.colors["bg"])
         win.resizable(True, True)
 
@@ -112,15 +173,19 @@ class TokenReviewWindow:
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
-    def _find_token_images(self) -> list:
+    def _find_review_images(self) -> list:
         exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
         candidates = []
         try:
             for name in sorted(os.listdir(self._folder)):
-                if "token" in name.lower() and os.path.splitext(name)[1].lower() in exts:
+                is_token = "token" in name.lower()
+                if is_token == self._include_tokens and os.path.splitext(name)[1].lower() in exts:
                     candidates.append(os.path.join(self._folder, name))
         except OSError:
             pass
+
+        if not self._include_tokens:
+            return candidates
 
         # Deduplicate: strip any leading digits to get the canonical filename
         # (e.g. "6Squirrel_token1.png" and "32Squirrel_token1.png" both become
@@ -166,7 +231,7 @@ class TokenReviewWindow:
         if not page_items:
             tk.Label(
                 self._grid_frame,
-                text="No token images found.",
+                text=self._empty_message,
                 bg=self._parent.colors["bg"],
                 fg=self._parent.colors["muted"],
                 font=("Segoe UI", 12),
@@ -321,8 +386,15 @@ class TokenReviewWindow:
 
         self._render_page()
         self._build_bottom_buttons()
+        return not errors
 
     def _on_continue(self):
+        # Apply any pending red-X selections before continuing. This lets the
+        # user mark images and continue without clicking the separate delete
+        # button first.
+        if self._marked and not self._delete_marked():
+            return
+
         self._win.grab_release()
         self._win.destroy()
         self._done_event.set()
@@ -412,7 +484,7 @@ class MtgDeckGui(tk.Tk):
         self.run_button = tk.Button(
             form,
             text="Run Workflow",
-            command=self.run_workflow,
+            command=lambda: self.run_workflow(change_artwork=False),
             bg=self.colors["accent"],
             fg="#07111f",
             activebackground=self.colors["accent_hover"],
@@ -424,6 +496,22 @@ class MtgDeckGui(tk.Tk):
             cursor="hand2",
         )
         self.run_button.grid(row=0, column=2, sticky="e", padx=(12, 0))
+
+        self.artwork_button = tk.Button(
+            form,
+            text="Change Artwork before .pdf",
+            command=lambda: self.run_workflow(change_artwork=True),
+            bg=self.colors["panel"],
+            fg=self.colors["text"],
+            activebackground=self.colors["field"],
+            activeforeground=self.colors["text"],
+            relief=tk.FLAT,
+            font=("Segoe UI", 10, "bold"),
+            padx=18,
+            pady=9,
+            cursor="hand2",
+        )
+        self.artwork_button.grid(row=1, column=2, sticky="e", padx=(12, 0), pady=(8, 0))
 
         log_frame = tk.Frame(self, bg=self.colors["panel"], padx=12, pady=12)
         log_frame.grid(row=2, column=0, sticky="nsew", padx=24, pady=(0, 18))
@@ -455,20 +543,25 @@ class MtgDeckGui(tk.Tk):
         )
         status_bar.grid(row=3, column=0, sticky="ew")
 
-    def run_workflow(self):
+    def run_workflow(self, change_artwork=False):
         deck_url = self.deck_url.get().strip()
         if not deck_url:
             messagebox.showerror("Deck URL required", "Enter a deck URL first.")
             return
 
         self.run_button.configure(state=tk.DISABLED, text="Running...")
+        self.artwork_button.configure(state=tk.DISABLED)
         self.status.set("Running fetch, PDF generation, and open steps...")
         self.clear_log()
 
-        worker = threading.Thread(target=self._run_workflow_thread, args=(deck_url,), daemon=True)
+        worker = threading.Thread(
+            target=self._run_workflow_thread,
+            args=(deck_url, change_artwork),
+            daemon=True,
+        )
         worker.start()
 
-    def _run_workflow_thread(self, deck_url):
+    def _run_workflow_thread(self, deck_url, change_artwork=False):
         front_folder = os.path.join(REPO_ROOT, "game", "front")
 
         try:
@@ -490,15 +583,45 @@ class MtgDeckGui(tk.Tk):
             if exit_code != 0:
                 raise RuntimeError(f"Download failed with exit code {exit_code}.")
 
+            # Basic lands are intentionally excluded from every generated PDF.
+            for land, count in _remove_basic_lands(front_folder).items():
+                if count:
+                    self.append_log(f"{count} {land} removed\n")
+
             # Step 4 – pause: open the token review window on the main thread and
             #           block this background thread until the user clicks Continue
             self.append_log("\nOpening token review window\u2026\n")
             review_done = threading.Event()
             self.after(0, lambda: TokenReviewWindow(self, front_folder, review_done))
             review_done.wait()
-            self.append_log("Token review complete. Proceeding to PDF creation.\n")
+            self.append_log("Token review complete.\n")
 
-            # Step 5 – create the A4 PDF from whatever images remain in game/front/
+            # Step 5 - review all remaining non-token cards before continuing.
+            self.append_log("\nOpening all-card review window...\n")
+            card_review_done = threading.Event()
+            self.after(
+                0,
+                lambda: TokenReviewWindow(
+                    self,
+                    front_folder,
+                    card_review_done,
+                    include_tokens=False,
+                ),
+            )
+            card_review_done.wait()
+            self.append_log("All-card review complete.\n")
+
+            if change_artwork:
+                # Pause so artwork can be replaced before the PDF is created.
+                self.append_log("\nWaiting for artwork changes before PDF creation...\n")
+                artwork_ready = threading.Event()
+                self.after(0, lambda: self._prompt_for_artwork_changes(artwork_ready))
+                artwork_ready.wait()
+                self.append_log("Artwork is ready. Proceeding to PDF creation.\n")
+            else:
+                self.append_log("Proceeding to PDF creation.\n")
+
+            # Step 7 – create the A4 PDF from whatever images remain in game/front/
             pdf_cmd = [
                 script_python(),
                 "create_pdf.py",
@@ -514,7 +637,7 @@ class MtgDeckGui(tk.Tk):
             if not os.path.isfile(OUTPUT_PDF):
                 raise FileNotFoundError(f"PDF was not created: {OUTPUT_PDF}")
 
-            # Step 6 – open the finished PDF with the system default viewer
+            # Step 8 – open the finished PDF with the system default viewer
             self.append_log(f"\nOpening {OUTPUT_PDF}\n")
             self._open_pdf(OUTPUT_PDF)
             self.after(0, self._set_success)
@@ -539,6 +662,16 @@ class MtgDeckGui(tk.Tk):
             self.append_log(line)
 
         return process.wait()
+
+    def _prompt_for_artwork_changes(self, done_event):
+        """Pause the workflow until the user confirms the artwork is ready."""
+        messagebox.showinfo(
+            "Change Artwork before .pdf",
+            "You can now replace or edit the images in game/front/.\n\n"
+            "Click OK when the artwork is ready. The PDF will be created afterwards.",
+            parent=self,
+        )
+        done_event.set()
 
     def _open_pdf(self, path):
         if sys.platform.startswith("win"):
@@ -569,10 +702,12 @@ class MtgDeckGui(tk.Tk):
     def _set_success(self):
         self.status.set("Done. PDF opened.")
         self.run_button.configure(state=tk.NORMAL, text="Run Workflow")
+        self.artwork_button.configure(state=tk.NORMAL)
 
     def _set_failed(self, message):
         self.status.set("Failed. See log for details.")
         self.run_button.configure(state=tk.NORMAL, text="Run Workflow")
+        self.artwork_button.configure(state=tk.NORMAL)
         messagebox.showerror("Workflow failed", message)
 
     def _format_command(self, command):
