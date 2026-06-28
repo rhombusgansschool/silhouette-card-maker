@@ -2,7 +2,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from PIL import Image
 
@@ -14,6 +14,98 @@ SPEC.loader.exec_module(gui)
 
 
 class GuiHelperTests(unittest.TestCase):
+    def test_double_faced_fetch_line_is_parsed_into_download_stems(self):
+        card = gui._parse_double_faced_card_line(
+            "Index: 5, quantity: 1, set code: znr, collector number: 12, "
+            "name: Emeria's Call // Emeria, Shattered Skyclave\n"
+        )
+
+        self.assertEqual(
+            card,
+            {
+                "index": 5,
+                "quantity": 1,
+                "name": "Emeria's Call // Emeria, Shattered Skyclave",
+            },
+        )
+        self.assertEqual(
+            gui._double_faced_card_stems(card),
+            {"5EmeriasCallEmeriaShatteredSkyclave1"},
+        )
+        self.assertIsNone(
+            gui._parse_double_faced_card_line(
+                "Index: 6, quantity: 1, name: Lightning Bolt"
+            )
+        )
+
+    def test_print_preview_uses_eight_cards_and_pdf_order(self):
+        self.assertEqual(gui.PrintPreviewWindow.PAGE_SIZE, 8)
+        with tempfile.TemporaryDirectory(dir=MODULE_PATH.parent) as temp_dir:
+            root = Path(temp_dir)
+            front = root / "front"
+            double_sided = root / "double_sided"
+            front.mkdir()
+            double_sided.mkdir()
+            for filename in (
+                "10Third1.png",
+                "2Second1.png",
+                "1First1.png",
+                "3DoubleSided1.png",
+            ):
+                Image.new("RGB", (5, 7), "blue").save(front / filename)
+            Image.new("RGB", (5, 7), "red").save(
+                double_sided / "3DoubleSided1.png"
+            )
+
+            ordered = gui._print_order_image_paths(
+                str(front), str(double_sided)
+            )
+
+            self.assertEqual(
+                [Path(path).name for path in ordered],
+                [
+                    "1First1.png",
+                    "2Second1.png",
+                    "10Third1.png",
+                    "3DoubleSided1.png",
+                ],
+            )
+
+    def test_deleting_preview_card_also_deletes_matching_back(self):
+        with tempfile.TemporaryDirectory(dir=MODULE_PATH.parent) as temp_dir:
+            root = Path(temp_dir)
+            front = root / "7TransformCard1.png"
+            double_sided = root / "double_sided"
+            double_sided.mkdir()
+            back = double_sided / "7TransformCard1.jpg"
+            Image.new("RGB", (5, 7), "blue").save(front)
+            Image.new("RGB", (5, 7), "red").save(back)
+
+            errors = gui._delete_print_card(str(front), str(double_sided))
+
+            self.assertEqual(errors, [])
+            self.assertFalse(front.exists())
+            self.assertFalse(back.exists())
+
+    def test_selector_navigation_stays_inside_available_pages(self):
+        selector = object.__new__(gui.TokenReviewWindow)
+        selector._page = 0
+        selector._images = ["card"] * (gui.TokenReviewWindow.PAGE_SIZE + 1)
+        selector._render_page = Mock()
+        selector._build_bottom_buttons = Mock()
+
+        selector._prev_page()
+        self.assertEqual(selector._page, 0)
+        selector._render_page.assert_not_called()
+
+        selector._next_page()
+        self.assertEqual(selector._page, 1)
+        selector._next_page()
+        self.assertEqual(selector._page, 1)
+
+        selector._prev_page()
+        self.assertEqual(selector._page, 0)
+
     def test_token_name_and_scryfall_search_url(self):
         path = "12CatWarrior_token1.png"
 

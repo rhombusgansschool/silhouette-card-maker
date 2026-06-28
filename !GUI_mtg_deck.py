@@ -10,6 +10,7 @@ import webbrowser
 from tkinter import filedialog, messagebox, scrolledtext
 from urllib.parse import quote_plus
 
+from natsort import natsorted
 from PIL import Image, ImageOps, ImageTk
 
 try:
@@ -23,7 +24,19 @@ REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
 OUTPUT_PDF = os.path.join(REPO_ROOT, "game", "output", "game.pdf")
 CLEANUP_DIR = os.path.join(REPO_ROOT, "z_deletes_fromCardmaker")
 BASIC_LAND_NAMES = ("Mountain", "Island", "Forest", "Swamp", "Plains")
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+IMAGE_EXTENSIONS = {
+    ".png", ".apng", ".jpg", ".jpeg", ".jpx", ".jp2",
+    ".gif", ".webp", ".tif", ".tiff", ".bmp",
+}
+WORKFLOW_STEPS = (
+    ("1. Choose a routine", "Paste a Moxfield URL and select one of the three workflow buttons."),
+    ("2. Download cards", "Clear old fronts, fetch the deck and tokens, then remove basic lands."),
+    ("3. Filter double faces", "Cards whose names contain // are shown briefly, then excluded."),
+    ("4. Select tokens", "Click to deselect tokens. Token-art mode also enables right-click replacement."),
+    ("5. Select main cards", "Review the remaining cards and deselect anything you do not want."),
+    ("6. Optional review", "Pause for manual artwork changes or open the eight-card print preview."),
+    ("7. Create the PDF", "Build the A4 print-ready PDF and open it in the default viewer."),
+)
 TkRoot = TkinterDnD.Tk if TkinterDnD is not None else tk.Tk
 
 # ─── Workflow overview ───────────────────────────────────────────────────────
@@ -199,6 +212,261 @@ def _move_download_to_cleanup(path: str) -> str:
     return shutil.move(path, destination)
 
 
+def _print_order_image_paths(front_folder: str, double_sided_folder: str) -> list:
+    """Return front images in the same single-sided/DFC natural order as the PDF."""
+    def relative_images(folder: str) -> list:
+        images = []
+        try:
+            for current_folder, _, filenames in os.walk(folder):
+                for filename in filenames:
+                    if os.path.splitext(filename)[1].lower() not in IMAGE_EXTENSIONS:
+                        continue
+                    full_path = os.path.join(current_folder, filename)
+                    if os.path.isfile(full_path):
+                        images.append(os.path.relpath(full_path, folder))
+        except OSError:
+            return []
+        return images
+
+    front_images = relative_images(front_folder)
+    double_sided_stems = {
+        os.path.splitext(os.path.basename(path))[0]
+        for path in relative_images(double_sided_folder)
+    }
+    single_sided = [
+        path for path in front_images
+        if os.path.splitext(os.path.basename(path))[0] not in double_sided_stems
+    ]
+    double_sided = [
+        path for path in front_images
+        if os.path.splitext(os.path.basename(path))[0] in double_sided_stems
+    ]
+    ordered = natsorted(single_sided) + natsorted(double_sided)
+    return [os.path.join(front_folder, path) for path in ordered]
+
+
+def _delete_print_card(front_path: str, double_sided_folder: str) -> list:
+    """Delete a selected front and any matching double-sided back images."""
+    stem = os.path.splitext(os.path.basename(front_path))[0]
+    back_paths = []
+    try:
+        for current_folder, _, filenames in os.walk(double_sided_folder):
+            for filename in filenames:
+                if os.path.splitext(filename)[0] == stem:
+                    back_paths.append(os.path.join(current_folder, filename))
+    except OSError:
+        pass
+
+    errors = []
+    # Remove backs first. If a back is locked, retain the front so the user can
+    # retry without leaving an unmatched back that would break PDF validation.
+    for path in back_paths:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            errors.append(f"{os.path.basename(path)}: {exc}")
+    if errors:
+        return errors
+
+    try:
+        os.remove(front_path)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        errors.append(f"{os.path.basename(front_path)}: {exc}")
+    return errors
+
+
+def _parse_double_faced_card_line(line: str):
+    """Parse a fetch log entry for a card whose deck name contains ``//``."""
+    match = re.match(
+        r"^Index:\s*(\d+),\s*quantity:\s*(\d+).*?,\s*name:\s*(.+?)\s*$",
+        line.strip(),
+    )
+    if match is None or "//" not in match.group(3):
+        return None
+    return {
+        "index": int(match.group(1)),
+        "quantity": int(match.group(2)),
+        "name": match.group(3),
+    }
+
+
+def _double_faced_card_stems(card: dict) -> set:
+    clean_name = re.sub(r"[^\w]", "", card["name"])
+    return {
+        f'{card["index"]}{clean_name}{copy_number}'
+        for copy_number in range(1, card["quantity"] + 1)
+    }
+
+
+def _find_images_with_stems(folder: str, stems: set) -> list:
+    matches = []
+    try:
+        for current_folder, _, filenames in os.walk(folder):
+            for filename in filenames:
+                if os.path.splitext(filename)[0] in stems:
+                    path = os.path.join(current_folder, filename)
+                    if os.path.isfile(path):
+                        matches.append(path)
+    except OSError:
+        return []
+    return natsorted(matches)
+
+
+class DoubleFacedRemovalWindow:
+    """Show a downloaded double-faced card briefly, then remove both faces."""
+
+    AUTO_CLOSE_SECONDS = 10
+    PREVIEW_WIDTH = 300
+    PREVIEW_HEIGHT = 420
+
+    def __init__(
+        self,
+        parent: "MtgDeckGui",
+        card: dict,
+        front_paths: list,
+        back_paths: list,
+        done_event: threading.Event,
+    ):
+        self._parent = parent
+        self._card = card
+        self._done_event = done_event
+        self._paths = list(dict.fromkeys(front_paths + back_paths))
+        self._seconds_remaining = self.AUTO_CLOSE_SECONDS
+        self._timer_job = None
+        self._preview_ref = None
+
+        win = tk.Toplevel(parent)
+        self._win = win
+        win.title("Double-faced card")
+        win.configure(bg=parent.colors["bg"])
+        width, height = 420, 600
+        x = max(0, (parent.winfo_screenwidth() - width) // 2)
+        y = max(0, (parent.winfo_screenheight() - height) // 2)
+        win.geometry(f"{width}x{height}+{x}+{y}")
+        win.resizable(False, False)
+        win.transient(parent)
+        win.grab_set()
+        win.protocol("WM_DELETE_WINDOW", self._remove_and_close)
+
+        tk.Label(
+            win,
+            text="Double faced cards will be removed",
+            bg=parent.colors["bg"],
+            fg=parent.colors["error"],
+            font=("Segoe UI", 13, "bold"),
+        ).pack(padx=16, pady=(16, 4))
+        tk.Label(
+            win,
+            text=card["name"],
+            bg=parent.colors["bg"],
+            fg=parent.colors["text"],
+            font=("Segoe UI", 9),
+            wraplength=380,
+        ).pack(padx=16, pady=(0, 10))
+
+        preview_frame = tk.Frame(
+            win,
+            width=self.PREVIEW_WIDTH,
+            height=self.PREVIEW_HEIGHT,
+            bg=parent.colors["field"],
+        )
+        preview_frame.pack(padx=16)
+        preview_frame.pack_propagate(False)
+        preview_label = tk.Label(
+            preview_frame,
+            text="Card image unavailable",
+            bg=parent.colors["field"],
+            fg=parent.colors["muted"],
+            font=("Segoe UI", 10),
+        )
+        preview_label.pack(fill=tk.BOTH, expand=True)
+
+        preview_path = front_paths[0] if front_paths else (
+            back_paths[0] if back_paths else None
+        )
+        if preview_path:
+            try:
+                with Image.open(preview_path) as opened:
+                    image = ImageOps.exif_transpose(opened)
+                    image.thumbnail(
+                        (self.PREVIEW_WIDTH - 8, self.PREVIEW_HEIGHT - 8),
+                        Image.LANCZOS,
+                    )
+                    self._preview_ref = ImageTk.PhotoImage(image.copy())
+                preview_label.configure(image=self._preview_ref, text="")
+            except Exception:
+                pass
+
+        self._countdown = tk.StringVar()
+        tk.Label(
+            win,
+            textvariable=self._countdown,
+            bg=parent.colors["bg"],
+            fg=parent.colors["muted"],
+            font=("Segoe UI", 9),
+        ).pack(padx=16, pady=8)
+        tk.Button(
+            win,
+            text="Remove now",
+            command=self._remove_and_close,
+            bg=parent.colors["error"],
+            fg="#07111f",
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+            padx=12,
+            pady=6,
+            cursor="hand2",
+        ).pack(pady=(0, 12))
+
+        self._update_countdown()
+
+    def _update_countdown(self):
+        if self._seconds_remaining <= 0:
+            self._remove_and_close()
+            return
+        self._countdown.set(
+            f"Removing automatically in {self._seconds_remaining} seconds..."
+        )
+        self._seconds_remaining -= 1
+        self._timer_job = self._win.after(1000, self._update_countdown)
+
+    def _remove_and_close(self):
+        if self._timer_job is not None:
+            try:
+                self._win.after_cancel(self._timer_job)
+            except tk.TclError:
+                pass
+            self._timer_job = None
+
+        errors = []
+        for path in self._paths:
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                errors.append(f"{os.path.basename(path)}: {exc}")
+        if errors:
+            messagebox.showerror(
+                "Could not remove double-faced card",
+                "\n".join(errors),
+                parent=self._win,
+            )
+            self._countdown.set("Removal failed. Use Remove now to retry.")
+            return
+
+        self._parent.append_log(
+            f'Removed double-faced card: {self._card["name"]}\n'
+        )
+        self._win.grab_release()
+        self._win.destroy()
+        self._done_event.set()
+
+
 class TokenReviewWindow:
     """Modal pause window for token or non-token images before PDF creation.
 
@@ -238,10 +506,14 @@ class TokenReviewWindow:
         win = tk.Toplevel(parent)
         self._win = win
         if include_tokens:
-            win.title(f"Review Token Cards  \u2014  {len(self._images)} token(s) found")
+            win.title(
+                f"Selector_Window Token  \u2014  {len(self._images)} token(s) found"
+            )
             self._empty_message = "No token images found."
         else:
-            win.title(f"Review All Cards  \u2014  {len(self._images)} card(s) found")
+            win.title(
+                f"Selector_Window Main  \u2014  {len(self._images)} card(s) found"
+            )
             self._empty_message = "No non-token card images found."
         win.configure(bg=parent.colors["bg"])
         win.resizable(True, True)
@@ -430,29 +702,32 @@ class TokenReviewWindow:
                 font=("Segoe UI", 9),
             ).pack(side=tk.LEFT, padx=(0, 12))
 
-        if self._page > 0:
-            tk.Button(
-                self._btn_frame, text="\u25c4 Prev",
-                command=self._prev_page,
-                bg=self._parent.colors["panel"], fg=self._parent.colors["text"],
-                relief=tk.FLAT, font=("Segoe UI", 9), padx=8, pady=5, cursor="hand2",
-            ).pack(side=tk.LEFT)
+        tk.Button(
+            self._btn_frame, text="\u25c4 Previous page",
+            command=self._prev_page,
+            bg=self._parent.colors["panel"], fg=self._parent.colors["text"],
+            disabledforeground=self._parent.colors["muted"],
+            relief=tk.FLAT, font=("Segoe UI", 9), padx=8, pady=5,
+            cursor="hand2" if self._page > 0 else "arrow",
+            state=tk.NORMAL if self._page > 0 else tk.DISABLED,
+        ).pack(side=tk.LEFT)
 
-        if total_pages > 1:
-            tk.Label(
-                self._btn_frame,
-                text=f"  {self._page + 1} / {total_pages}  ",
-                bg=self._parent.colors["bg"], fg=self._parent.colors["muted"],
-                font=("Segoe UI", 9),
-            ).pack(side=tk.LEFT)
+        tk.Label(
+            self._btn_frame,
+            text=f"  Current page {self._page + 1}/{total_pages}  ",
+            bg=self._parent.colors["bg"], fg=self._parent.colors["muted"],
+            font=("Segoe UI", 9),
+        ).pack(side=tk.LEFT)
 
-        if self._page < total_pages - 1:
-            tk.Button(
-                self._btn_frame, text="Next \u25ba",
-                command=self._next_page,
-                bg=self._parent.colors["panel"], fg=self._parent.colors["text"],
-                relief=tk.FLAT, font=("Segoe UI", 9), padx=8, pady=5, cursor="hand2",
-            ).pack(side=tk.LEFT)
+        tk.Button(
+            self._btn_frame, text="Next page \u25ba",
+            command=self._next_page,
+            bg=self._parent.colors["panel"], fg=self._parent.colors["text"],
+            disabledforeground=self._parent.colors["muted"],
+            relief=tk.FLAT, font=("Segoe UI", 9), padx=8, pady=5,
+            cursor="hand2" if self._page < total_pages - 1 else "arrow",
+            state=tk.NORMAL if self._page < total_pages - 1 else tk.DISABLED,
+        ).pack(side=tk.LEFT)
 
         # Right-side buttons (packed right-to-left)
         tk.Button(
@@ -462,6 +737,18 @@ class TokenReviewWindow:
             activebackground=self._parent.colors["accent_hover"], activeforeground="#07111f",
             relief=tk.FLAT, font=("Segoe UI", 9, "bold"), padx=12, pady=5, cursor="hand2",
         ).pack(side=tk.RIGHT)
+
+        if not self._include_tokens:
+            tk.Button(
+                self._btn_frame,
+                text="Continue and show Preview",
+                command=self._on_continue_with_preview,
+                bg=self._parent.colors["panel"], fg=self._parent.colors["text"],
+                activebackground=self._parent.colors["field"],
+                activeforeground=self._parent.colors["text"],
+                relief=tk.FLAT, font=("Segoe UI", 9, "bold"),
+                padx=12, pady=5, cursor="hand2",
+            ).pack(side=tk.RIGHT, padx=(0, 6))
 
         self._delete_btn = tk.Button(
             self._btn_frame, text="Delete all \u2715",
@@ -474,11 +761,16 @@ class TokenReviewWindow:
         self._update_delete_btn()
 
     def _prev_page(self):
+        if self._page <= 0:
+            return
         self._page -= 1
         self._render_page()
         self._build_bottom_buttons()
 
     def _next_page(self):
+        total_pages = max(1, -(-len(self._images) // self.PAGE_SIZE))
+        if self._page >= total_pages - 1:
+            return
         self._page += 1
         self._render_page()
         self._build_bottom_buttons()
@@ -512,6 +804,337 @@ class TokenReviewWindow:
         if self._marked and not self._delete_marked():
             return
 
+        self._win.grab_release()
+        self._win.destroy()
+        self._done_event.set()
+
+    def _on_continue_with_preview(self):
+        if self._include_tokens:
+            return
+        if self._marked and not self._delete_marked():
+            return
+
+        self._win.grab_release()
+        self._win.destroy()
+        PrintPreviewWindow(
+            self._parent,
+            self._folder,
+            os.path.join(REPO_ROOT, "game", "double_sided"),
+            self._done_event,
+        )
+
+
+class PrintPreviewWindow:
+    """Read-only, eight-cards-per-page preview in final PDF print order."""
+
+    COLS = 4
+    ROWS = 2
+    PAGE_SIZE = COLS * ROWS
+
+    def __init__(
+        self,
+        parent: "MtgDeckGui",
+        front_folder: str,
+        double_sided_folder: str,
+        done_event: threading.Event,
+    ):
+        self._parent = parent
+        self._done_event = done_event
+        self._front_folder = front_folder
+        self._double_sided_folder = double_sided_folder
+        self._images = _print_order_image_paths(
+            front_folder, double_sided_folder
+        )
+        self._page = 0
+        self._marked = set()
+        self._thumb_refs = []
+        self._reload_button = None
+
+        win = tk.Toplevel(parent)
+        self._win = win
+        win.title(f"Print Preview  \u2014  {len(self._images)} card(s)")
+        win.configure(bg=parent.colors["bg"])
+        win.resizable(True, True)
+
+        screen_width = parent.winfo_screenwidth()
+        screen_height = parent.winfo_screenheight()
+        win.geometry(f"{screen_width}x{screen_height}+0+0")
+        win.after(0, lambda: win.state("zoomed"))
+        win.grab_set()
+        win.protocol("WM_DELETE_WINDOW", self._on_continue)
+
+        available_width = screen_width - 32
+        available_height = screen_height - 40 - 110
+        self._card_width = max(
+            80, (available_width - self.COLS * 8) // self.COLS
+        )
+        self._card_height = max(
+            112, (available_height - self.ROWS * 8) // self.ROWS
+        )
+
+        self._grid_frame = tk.Frame(win, bg=parent.colors["bg"])
+        self._grid_frame.pack(
+            fill=tk.BOTH, expand=True, padx=16, pady=(12, 6)
+        )
+        self._button_frame = tk.Frame(win, bg=parent.colors["bg"])
+        self._button_frame.pack(fill=tk.X, padx=16, pady=(0, 10))
+
+        self._render_page()
+        self._build_buttons()
+
+    def _render_page(self):
+        for widget in self._grid_frame.winfo_children():
+            widget.destroy()
+        self._thumb_refs.clear()
+
+        start = self._page * self.PAGE_SIZE
+        page_images = self._images[start:start + self.PAGE_SIZE]
+        if not page_images:
+            tk.Label(
+                self._grid_frame,
+                text="No card images remain to preview.",
+                bg=self._parent.colors["bg"],
+                fg=self._parent.colors["muted"],
+                font=("Segoe UI", 12),
+            ).pack(expand=True)
+            return
+
+        for index, path in enumerate(page_images):
+            row, column = divmod(index, self.COLS)
+            canvas = tk.Canvas(
+                self._grid_frame,
+                width=self._card_width,
+                height=self._card_height,
+                bg=self._parent.colors["panel"],
+                highlightthickness=2,
+                highlightbackground=self._parent.colors["panel"],
+                cursor="hand2",
+            )
+            canvas.grid(row=row, column=column, padx=2, pady=2)
+
+            try:
+                with Image.open(path) as opened:
+                    image = ImageOps.exif_transpose(opened)
+                    image.thumbnail(
+                        (self._card_width, self._card_height),
+                        Image.LANCZOS,
+                    )
+                    photo = ImageTk.PhotoImage(image.copy())
+                canvas.create_image(
+                    self._card_width // 2,
+                    self._card_height // 2,
+                    image=photo,
+                    anchor="center",
+                )
+                self._thumb_refs.append(photo)
+            except Exception:
+                canvas.create_text(
+                    self._card_width // 2,
+                    self._card_height // 2,
+                    text=os.path.basename(path),
+                    fill=self._parent.colors["muted"],
+                    font=("Segoe UI", 9),
+                    width=self._card_width - 20,
+                )
+
+            print_position = start + index + 1
+            canvas.create_rectangle(
+                7, 7, 58, 34,
+                fill=self._parent.colors["field"], outline="",
+            )
+            canvas.create_text(
+                32, 20,
+                text=f"#{print_position}",
+                fill=self._parent.colors["text"],
+                font=("Segoe UI", 10, "bold"),
+            )
+            canvas._path = path  # type: ignore[attr-defined]
+            canvas._x_ids = ()  # type: ignore[attr-defined]
+            if path in self._marked:
+                canvas._x_ids = self._draw_x(canvas)  # type: ignore[attr-defined]
+                canvas.configure(
+                    highlightbackground=self._parent.colors["error"]
+                )
+            canvas.bind("<Button-1>", self._on_card_click)
+
+    def _draw_x(self, canvas: tk.Canvas) -> tuple:
+        width = int(canvas.cget("width"))
+        height = int(canvas.cget("height"))
+        rectangle = canvas.create_rectangle(
+            0, 0, width, height,
+            fill="#cc0000", stipple="gray50", outline="",
+        )
+        cross = canvas.create_text(
+            width // 2,
+            height // 2,
+            text="\u2715",
+            fill="white",
+            font=("Segoe UI", max(24, width // 5), "bold"),
+        )
+        return rectangle, cross
+
+    def _on_card_click(self, event: tk.Event):  # type: ignore[type-arg]
+        canvas: tk.Canvas = event.widget
+        path = canvas._path  # type: ignore[attr-defined]
+        if path in self._marked:
+            self._marked.discard(path)
+            for item_id in canvas._x_ids:  # type: ignore[attr-defined]
+                canvas.delete(item_id)
+            canvas._x_ids = ()  # type: ignore[attr-defined]
+            canvas.configure(
+                highlightbackground=self._parent.colors["panel"]
+            )
+        else:
+            self._marked.add(path)
+            canvas._x_ids = self._draw_x(canvas)  # type: ignore[attr-defined]
+            canvas.configure(
+                highlightbackground=self._parent.colors["error"]
+            )
+        self._update_reload_button()
+
+    def _build_buttons(self):
+        for widget in self._button_frame.winfo_children():
+            widget.destroy()
+        self._reload_button = None
+
+        total_pages = max(1, -(-len(self._images) // self.PAGE_SIZE))
+        tk.Button(
+            self._button_frame,
+            text="\u25c4 Previous page",
+            command=self._previous_page,
+            bg=self._parent.colors["panel"],
+            fg=self._parent.colors["text"],
+            disabledforeground=self._parent.colors["muted"],
+            relief=tk.FLAT,
+            font=("Segoe UI", 9),
+            padx=8,
+            pady=5,
+            cursor="hand2" if self._page > 0 else "arrow",
+            state=tk.NORMAL if self._page > 0 else tk.DISABLED,
+        ).pack(side=tk.LEFT)
+        tk.Label(
+            self._button_frame,
+            text=f"  Current page {self._page + 1}/{total_pages}  ",
+            bg=self._parent.colors["bg"],
+            fg=self._parent.colors["muted"],
+            font=("Segoe UI", 9),
+        ).pack(side=tk.LEFT)
+        tk.Button(
+            self._button_frame,
+            text="Next page \u25ba",
+            command=self._next_page,
+            bg=self._parent.colors["panel"],
+            fg=self._parent.colors["text"],
+            disabledforeground=self._parent.colors["muted"],
+            relief=tk.FLAT,
+            font=("Segoe UI", 9),
+            padx=8,
+            pady=5,
+            cursor="hand2" if self._page < total_pages - 1 else "arrow",
+            state=tk.NORMAL if self._page < total_pages - 1 else tk.DISABLED,
+        ).pack(side=tk.LEFT)
+        tk.Label(
+            self._button_frame,
+            text="Click a card to toggle deselection",
+            bg=self._parent.colors["bg"],
+            fg=self._parent.colors["muted"],
+            font=("Segoe UI", 9),
+        ).pack(side=tk.LEFT, padx=(14, 0))
+        tk.Button(
+            self._button_frame,
+            text="Continue to PDF \u2192",
+            command=self._on_continue,
+            bg=self._parent.colors["accent"],
+            fg="#07111f",
+            activebackground=self._parent.colors["accent_hover"],
+            activeforeground="#07111f",
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+            padx=12,
+            pady=5,
+            cursor="hand2",
+        ).pack(side=tk.RIGHT)
+        self._reload_button = tk.Button(
+            self._button_frame,
+            text="Reload Preview",
+            command=self._reload_preview,
+            bg=self._parent.colors["panel"],
+            fg=self._parent.colors["text"],
+            activebackground=self._parent.colors["field"],
+            activeforeground=self._parent.colors["text"],
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+            padx=12,
+            pady=5,
+            cursor="hand2",
+        )
+        self._reload_button.pack(side=tk.RIGHT, padx=(0, 6))
+        self._update_reload_button()
+
+    def _update_reload_button(self):
+        if self._reload_button is None:
+            return
+        if self._marked:
+            self._reload_button.configure(
+                text=f"Reload Preview ({len(self._marked)} deselected)",
+                bg=self._parent.colors["error"],
+                fg="#07111f",
+            )
+        else:
+            self._reload_button.configure(
+                text="Reload Preview",
+                bg=self._parent.colors["panel"],
+                fg=self._parent.colors["text"],
+            )
+
+    def _reload_preview(self) -> bool:
+        errors = []
+        for path in list(self._marked):
+            path_errors = _delete_print_card(
+                path, self._double_sided_folder
+            )
+            if path_errors:
+                errors.extend(path_errors)
+            if not os.path.exists(path):
+                self._marked.discard(path)
+
+        self._images = _print_order_image_paths(
+            self._front_folder, self._double_sided_folder
+        )
+        self._marked.intersection_update(self._images)
+        total_pages = max(1, -(-len(self._images) // self.PAGE_SIZE))
+        if self._page >= total_pages:
+            self._page = total_pages - 1
+        self._render_page()
+        self._build_buttons()
+
+        if errors:
+            messagebox.showerror(
+                "Could not deselect every card",
+                "\n".join(errors),
+                parent=self._win,
+            )
+            return False
+        return True
+
+    def _previous_page(self):
+        if self._page <= 0:
+            return
+        self._page -= 1
+        self._render_page()
+        self._build_buttons()
+
+    def _next_page(self):
+        total_pages = max(1, -(-len(self._images) // self.PAGE_SIZE))
+        if self._page >= total_pages - 1:
+            return
+        self._page += 1
+        self._render_page()
+        self._build_buttons()
+
+    def _on_continue(self):
+        if self._marked and not self._reload_preview():
+            return
         self._win.grab_release()
         self._win.destroy()
         self._done_event.set()
@@ -792,8 +1415,8 @@ class MtgDeckGui(TkRoot):
         super().__init__()
 
         self.title("MTG Deck PDF Maker")
-        self.geometry("860x560")
-        self.minsize(700, 460)
+        self.geometry("1180x650")
+        self.minsize(1000, 560)
 
         self.colors = {
             "bg": "#171a21",
@@ -814,6 +1437,7 @@ class MtgDeckGui(TkRoot):
 
     def _configure_grid(self):
         self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=0, minsize=310)
         self.rowconfigure(2, weight=1)
 
     def _build_widgets(self):
@@ -919,6 +1543,8 @@ class MtgDeckGui(TkRoot):
             row=2, column=2, sticky="e", padx=(12, 0), pady=(8, 0)
         )
 
+        self._build_workflow_guide()
+
         log_frame = tk.Frame(self, bg=self.colors["panel"], padx=12, pady=12)
         log_frame.grid(row=2, column=0, sticky="nsew", padx=24, pady=(0, 18))
         log_frame.columnconfigure(0, weight=1)
@@ -949,6 +1575,62 @@ class MtgDeckGui(TkRoot):
         )
         status_bar.grid(row=3, column=0, sticky="ew")
 
+    def _build_workflow_guide(self):
+        panel = tk.Frame(
+            self,
+            bg=self.colors["panel"],
+            padx=18,
+            pady=18,
+            width=300,
+        )
+        self.workflow_guide = panel
+        panel.grid(
+            row=0,
+            column=1,
+            rowspan=4,
+            sticky="nsew",
+            padx=(0, 24),
+            pady=20,
+        )
+        panel.grid_propagate(False)
+
+        tk.Label(
+            panel,
+            text="Workflow",
+            bg=self.colors["panel"],
+            fg=self.colors["text"],
+            font=("Segoe UI", 15, "bold"),
+            anchor="w",
+        ).pack(fill=tk.X, pady=(0, 4))
+        tk.Label(
+            panel,
+            text="From deck URL to print-ready PDF",
+            bg=self.colors["panel"],
+            fg=self.colors["muted"],
+            font=("Segoe UI", 9),
+            anchor="w",
+        ).pack(fill=tk.X, pady=(0, 14))
+
+        for heading, description in WORKFLOW_STEPS:
+            tk.Label(
+                panel,
+                text=heading,
+                bg=self.colors["panel"],
+                fg=self.colors["accent"],
+                font=("Segoe UI", 9, "bold"),
+                anchor="w",
+            ).pack(fill=tk.X)
+            tk.Label(
+                panel,
+                text=description,
+                bg=self.colors["panel"],
+                fg=self.colors["muted"],
+                font=("Segoe UI", 8),
+                justify=tk.LEFT,
+                anchor="w",
+                wraplength=260,
+            ).pack(fill=tk.X, pady=(1, 10))
+
     def run_workflow(self, change_artwork=False, change_token_artwork=False):
         deck_url = self.deck_url.get().strip()
         if not deck_url:
@@ -972,6 +1654,7 @@ class MtgDeckGui(TkRoot):
         self, deck_url, change_artwork=False, change_token_artwork=False
     ):
         front_folder = os.path.join(REPO_ROOT, "game", "front")
+        double_sided_folder = os.path.join(REPO_ROOT, "game", "double_sided")
 
         try:
             # Step 2 – clean game/front/ so we start with a fresh set of images
@@ -988,9 +1671,45 @@ class MtgDeckGui(TkRoot):
             ]
             self.append_log("\n== Downloading card images ==\n")
             self.append_log(f"{self._format_command(fetch_cmd)}\n\n")
-            exit_code = self._run_command(fetch_cmd)
+            double_faced_cards = []
+
+            def capture_double_faced_card(line):
+                card = _parse_double_faced_card_line(line)
+                if card is not None and card not in double_faced_cards:
+                    double_faced_cards.append(card)
+
+            exit_code = self._run_command(
+                fetch_cmd, line_callback=capture_double_faced_card
+            )
             if exit_code != 0:
                 raise RuntimeError(f"Download failed with exit code {exit_code}.")
+
+            for card in double_faced_cards:
+                stems = _double_faced_card_stems(card)
+                front_paths = _find_images_with_stems(front_folder, stems)
+                back_paths = _find_images_with_stems(double_sided_folder, stems)
+                if not front_paths and not back_paths:
+                    self.append_log(
+                        f'Could not find downloaded files for double-faced card: '
+                        f'{card["name"]}\n',
+                        "error",
+                    )
+                    continue
+
+                removal_done = threading.Event()
+                self.after(
+                    0,
+                    lambda card=card, front_paths=front_paths,
+                    back_paths=back_paths, removal_done=removal_done:
+                    DoubleFacedRemovalWindow(
+                        self,
+                        card,
+                        front_paths,
+                        back_paths,
+                        removal_done,
+                    ),
+                )
+                removal_done.wait()
 
             # Basic lands are intentionally excluded from every generated PDF.
             for land, count in _remove_basic_lands(front_folder).items():
@@ -1063,7 +1782,7 @@ class MtgDeckGui(TkRoot):
             self.append_log(f"\nERROR: {exc}\n", "error")
             self.after(0, lambda: self._set_failed(str(exc)))
 
-    def _run_command(self, command):
+    def _run_command(self, command, line_callback=None):
         process = subprocess.Popen(
             command,
             cwd=REPO_ROOT,
@@ -1077,6 +1796,8 @@ class MtgDeckGui(TkRoot):
         assert process.stdout is not None
         for line in process.stdout:
             self.append_log(line)
+            if line_callback is not None:
+                line_callback(line)
 
         return process.wait()
 
