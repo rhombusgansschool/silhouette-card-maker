@@ -14,6 +14,54 @@ SPEC.loader.exec_module(gui)
 
 
 class GuiHelperTests(unittest.TestCase):
+    def test_dropped_art_auto_confirms_when_always_accept_is_enabled(self):
+        with tempfile.TemporaryDirectory(dir=MODULE_PATH.parent) as temp_dir:
+            image_path = Path(temp_dir) / "replacement.png"
+            Image.new("RGB", (5, 7), "blue").save(image_path)
+            artwork = object.__new__(gui.TokenArtworkWindow)
+            artwork._win = Mock()
+            artwork._win.tk.splitlist.return_value = [str(image_path)]
+            artwork._set_candidate = Mock(return_value=True)
+            artwork._always_accept = Mock()
+            artwork._always_accept.get.return_value = True
+            artwork._confirm = Mock()
+            event = Mock(data=str(image_path))
+
+            result = artwork._on_drop(event)
+
+            self.assertEqual(result, "break")
+            artwork._set_candidate.assert_called_once_with(
+                str(image_path.resolve()), "Dropped image"
+            )
+            artwork._confirm.assert_called_once_with()
+
+    def test_startup_cleanup_clears_runtime_files_and_keeps_placeholders(self):
+        with tempfile.TemporaryDirectory(dir=MODULE_PATH.parent) as temp_dir:
+            root = Path(temp_dir)
+            for folder_name in gui.STARTUP_CLEAN_FOLDERS:
+                folder = root / "game" / folder_name
+                folder.mkdir(parents=True)
+                (folder / "working-file.png").write_bytes(b"data")
+                nested = folder / "nested"
+                nested.mkdir()
+                (nested / "nested-file.txt").write_text("data")
+                (folder / "README.md").write_text("keep")
+            decklist = root / "game" / "decklist"
+            (decklist / "EMPTY.md").write_text("keep")
+
+            removed = gui._clean_startup_workspace(str(root))
+
+            self.assertEqual(
+                removed,
+                {folder_name: 2 for folder_name in gui.STARTUP_CLEAN_FOLDERS},
+            )
+            for folder_name in gui.STARTUP_CLEAN_FOLDERS:
+                folder = root / "game" / folder_name
+                self.assertTrue((folder / "README.md").exists())
+                self.assertFalse((folder / "working-file.png").exists())
+                self.assertFalse((folder / "nested").exists())
+            self.assertTrue((decklist / "EMPTY.md").exists())
+
     def test_double_faced_fetch_line_is_parsed_into_download_stems(self):
         card = gui._parse_double_faced_card_line(
             "Index: 5, quantity: 1, set code: znr, collector number: 12, "

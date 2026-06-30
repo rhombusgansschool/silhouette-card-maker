@@ -24,13 +24,15 @@ REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
 OUTPUT_PDF = os.path.join(REPO_ROOT, "game", "output", "game.pdf")
 CLEANUP_DIR = os.path.join(REPO_ROOT, "z_deletes_fromCardmaker")
 BASIC_LAND_NAMES = ("Mountain", "Island", "Forest", "Swamp", "Plains")
+STARTUP_CLEAN_FOLDERS = ("back", "decklist", "double_sided", "front")
+WORKSPACE_PLACEHOLDERS = {"README.md", "EMPTY.md"}
 IMAGE_EXTENSIONS = {
     ".png", ".apng", ".jpg", ".jpeg", ".jpx", ".jp2",
     ".gif", ".webp", ".tif", ".tiff", ".bmp",
 }
 WORKFLOW_STEPS = (
     ("1. Choose a routine", "Paste a Moxfield URL and select one of the three workflow buttons."),
-    ("2. Download cards", "Clear old fronts, fetch the deck and tokens, then remove basic lands."),
+    ("2. Download cards", "Clear old workspace files, fetch the deck and tokens, then remove basic lands."),
     ("3. Filter double faces", "Cards whose names contain // are shown briefly, then excluded."),
     ("4. Select tokens", "Click to deselect tokens. Token-art mode also enables right-click replacement."),
     ("5. Select main cards", "Review the remaining cards and deselect anything you do not want."),
@@ -41,7 +43,8 @@ TkRoot = TkinterDnD.Tk if TkinterDnD is not None else tk.Tk
 
 # ─── Workflow overview ───────────────────────────────────────────────────────
 # 1. User enters a Moxfield deck URL and clicks "Run Workflow".
-# 2. All existing files in game/front/ are deleted so the folder is clean.
+# 2. Existing working files in game/back/, decklist/, double_sided/, and front/
+#    are deleted at startup. Tracked README/EMPTY placeholders are preserved.
 # 3. plugins/mtg/fetch.py downloads every card image (including tokens)
 #    into game/front/. All copies of Mountain, Island, Forest, Swamp, and
 #    Plains are then removed automatically and the counts are logged.
@@ -65,17 +68,43 @@ TkRoot = TkinterDnD.Tk if TkinterDnD is not None else tk.Tk
 
 
 def _clean_folder(folder: str) -> int:
-    """Delete every file (non-recursive) inside *folder*. Returns the count removed."""
+    """Recursively delete working files while retaining tracked placeholders."""
     removed = 0
-    try:
-        for name in os.listdir(folder):
-            path = os.path.join(folder, name)
-            if os.path.isfile(path):
+    errors = []
+    os.makedirs(folder, exist_ok=True)
+    for current_folder, directories, filenames in os.walk(folder, topdown=False):
+        for name in filenames:
+            path = os.path.join(current_folder, name)
+            is_root_placeholder = (
+                os.path.abspath(current_folder) == os.path.abspath(folder)
+                and name in WORKSPACE_PLACEHOLDERS
+            )
+            if is_root_placeholder:
+                continue
+            try:
                 os.remove(path)
                 removed += 1
-    except OSError:
-        pass
+            except OSError as exc:
+                errors.append(f"{path}: {exc}")
+        for name in directories:
+            path = os.path.join(current_folder, name)
+            try:
+                os.rmdir(path)
+            except OSError:
+                # Non-empty directories are harmless; any file deletion errors
+                # inside them are reported below.
+                pass
+    if errors:
+        raise RuntimeError("Could not clean every workspace file:\n" + "\n".join(errors))
     return removed
+
+
+def _clean_startup_workspace(repo_root: str) -> dict:
+    game_folder = os.path.join(repo_root, "game")
+    return {
+        folder_name: _clean_folder(os.path.join(game_folder, folder_name))
+        for folder_name in STARTUP_CLEAN_FOLDERS
+    }
 
 
 def _remove_basic_lands(folder: str) -> dict:
@@ -1330,7 +1359,9 @@ class TokenArtworkWindow:
                 parent=self._win,
             )
             return "break"
-        self._set_candidate(valid_paths[0], "Dropped image")
+        if self._set_candidate(valid_paths[0], "Dropped image"):
+            if self._always_accept.get():
+                self._confirm()
         return "break"
 
     def _choose_image(self):
@@ -1434,6 +1465,32 @@ class MtgDeckGui(TkRoot):
         self.always_accept_token_artwork = False
         self._configure_grid()
         self._build_widgets()
+        self._perform_startup_cleanup()
+
+    def _perform_startup_cleanup(self):
+        try:
+            removed_by_folder = _clean_startup_workspace(REPO_ROOT)
+        except Exception as exc:
+            error_message = str(exc)
+            self._append_log(f"Startup cleanup failed: {error_message}\n", "error")
+            self.status.set("Startup cleanup failed. See the log.")
+            self.after_idle(
+                lambda error_message=error_message: messagebox.showerror(
+                    "Startup cleanup failed", error_message, parent=self
+                )
+            )
+            return
+
+        total_removed = sum(removed_by_folder.values())
+        details = ", ".join(
+            f"{folder}: {count}"
+            for folder, count in removed_by_folder.items()
+        )
+        self._append_log(
+            f"Startup cleanup removed {total_removed} working file(s) "
+            f"({details}).\n"
+        )
+        self.status.set(f"Ready. Startup cleanup removed {total_removed} file(s).")
 
     def _configure_grid(self):
         self.columnconfigure(0, weight=1)
@@ -1779,8 +1836,12 @@ class MtgDeckGui(TkRoot):
             self.after(0, self._set_success)
 
         except Exception as exc:
-            self.append_log(f"\nERROR: {exc}\n", "error")
-            self.after(0, lambda: self._set_failed(str(exc)))
+            error_message = str(exc)
+            self.append_log(f"\nERROR: {error_message}\n", "error")
+            self.after(
+                0,
+                lambda error_message=error_message: self._set_failed(error_message),
+            )
 
     def _run_command(self, command, line_callback=None):
         process = subprocess.Popen(
