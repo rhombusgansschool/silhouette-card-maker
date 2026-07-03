@@ -36,7 +36,7 @@ WORKFLOW_STEPS = (
     ("3. Filter double faces", "Cards whose names contain // are shown briefly, then excluded."),
     ("4. Select tokens", "Click to deselect tokens. Token-art mode also enables right-click replacement."),
     ("5. Select main cards", "Review the remaining cards and deselect anything you do not want."),
-    ("6. Optional review", "Pause for manual artwork changes or open the eight-card print preview."),
+    ("6. Optional review", "Pause for manual artwork changes or open the eight-card print preview. The preview can also sideload another deck."),
     ("7. Create the PDF", "Build the A4 print-ready PDF and open it in the default viewer."),
 )
 TkRoot = TkinterDnD.Tk if TkinterDnD is not None else tk.Tk
@@ -57,7 +57,10 @@ TkRoot = TkinterDnD.Tk if TkinterDnD is not None else tk.Tk
 #    the window and resumes the workflow. The token-artwork routine also lets
 #    the user right-click a token to preview and confirm replacement artwork.
 # 5. A second review window shows every non-token card with the same paging,
-#    marking, deletion, and Continue controls.
+#    marking, deletion, and Continue controls.  Its print preview offers a
+#    "Sideload new cards" button: the user enters another Moxfield URL, the
+#    existing images are renamed into a higher index range so the new download
+#    cannot overwrite them, and steps 3-5 repeat with token-artwork mode on.
 # 6. When "Change Artwork before .pdf" was selected, execution PAUSES again
 #    so the user can replace artwork in game/front/. The normal workflow skips
 #    this pause.
@@ -144,6 +147,56 @@ def _remove_basic_lands(folder: str) -> dict:
         raise RuntimeError("Failed to remove basic lands:\n" + "\n".join(errors))
 
     return removed
+
+
+def _shift_existing_card_indices(front_folder: str, double_sided_folder: str) -> int:
+    """Rename existing card images out of the index range of a fresh fetch.
+
+    A sideloaded deck is downloaded with indices starting at 1 again, so the
+    files already on disk are moved to the next free multiple-of-1000 range
+    (e.g. ``6Cat_token1.png`` becomes ``1006Cat_token1.png``).  Fronts and
+    double-sided backs share filename stems, so both folders are shifted with
+    the same offset to keep the pairs matched.  Returns the rename count.
+    """
+    prefix_pattern = re.compile(r"^(\d+)(.*)$")
+    renames = []
+    highest_index = 0
+    for folder in (front_folder, double_sided_folder):
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            continue
+        for name in names:
+            path = os.path.join(folder, name)
+            if not os.path.isfile(path):
+                continue
+            if os.path.splitext(name)[1].lower() not in IMAGE_EXTENSIONS:
+                continue
+            match = prefix_pattern.match(name)
+            if match is None:
+                continue
+            index = int(match.group(1))
+            highest_index = max(highest_index, index)
+            renames.append((folder, name, index, match.group(2)))
+
+    offset = (highest_index // 1000 + 1) * 1000
+    errors = []
+    renamed = 0
+    for folder, name, index, remainder in renames:
+        source = os.path.join(folder, name)
+        target = os.path.join(folder, f"{index + offset}{remainder}")
+        try:
+            os.replace(source, target)
+        except OSError as exc:
+            errors.append(f"{name}: {exc}")
+        else:
+            renamed += 1
+    if errors:
+        raise RuntimeError(
+            "Could not preserve existing cards before sideloading:\n"
+            + "\n".join(errors)
+        )
+    return renamed
 
 
 def script_python():
@@ -1098,6 +1151,20 @@ class PrintPreviewWindow:
             cursor="hand2",
         )
         self._reload_button.pack(side=tk.RIGHT, padx=(0, 6))
+        tk.Button(
+            self._button_frame,
+            text="Sideload new cards",
+            command=self._on_sideload,
+            bg=self._parent.colors["panel"],
+            fg=self._parent.colors["text"],
+            activebackground=self._parent.colors["field"],
+            activeforeground=self._parent.colors["text"],
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+            padx=12,
+            pady=5,
+            cursor="hand2",
+        ).pack(side=tk.RIGHT, padx=(0, 6))
         self._update_reload_button()
 
     def _update_reload_button(self):
@@ -1164,6 +1231,114 @@ class PrintPreviewWindow:
     def _on_continue(self):
         if self._marked and not self._reload_preview():
             return
+        self._win.grab_release()
+        self._win.destroy()
+        self._done_event.set()
+
+    def _ask_sideload_url(self):
+        """Modal prompt for the Moxfield URL of the deck to sideload."""
+        dialog = tk.Toplevel(self._win)
+        dialog.title("Sideload new cards")
+        dialog.configure(bg=self._parent.colors["bg"])
+        width, height = 560, 210
+        x = max(0, (self._parent.winfo_screenwidth() - width) // 2)
+        y = max(0, (self._parent.winfo_screenheight() - height) // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog.resizable(False, False)
+        dialog.transient(self._win)
+        dialog.grab_set()
+
+        tk.Label(
+            dialog,
+            text="Paste a Moxfield deck URL",
+            bg=self._parent.colors["bg"],
+            fg=self._parent.colors["text"],
+            font=("Segoe UI", 12, "bold"),
+        ).pack(padx=20, pady=(16, 4))
+        tk.Label(
+            dialog,
+            text=(
+                "Its cards are downloaded next to the current ones, then the\n"
+                "token-artwork and card review windows open again before the PDF."
+            ),
+            bg=self._parent.colors["bg"],
+            fg=self._parent.colors["muted"],
+            font=("Segoe UI", 9),
+            justify=tk.CENTER,
+        ).pack(padx=20, pady=(0, 10))
+
+        url_var = tk.StringVar()
+        entry = tk.Entry(
+            dialog,
+            textvariable=url_var,
+            bg=self._parent.colors["field"],
+            fg=self._parent.colors["text"],
+            insertbackground=self._parent.colors["text"],
+            relief=tk.FLAT,
+            font=("Segoe UI", 10),
+        )
+        entry.pack(fill=tk.X, padx=20, ipady=6)
+        entry.focus_set()
+
+        result = {"url": None}
+
+        def confirm(event=None):
+            url = url_var.get().strip()
+            if not url:
+                messagebox.showerror(
+                    "Deck URL required", "Enter a deck URL first.", parent=dialog
+                )
+                return
+            result["url"] = url
+            dialog.destroy()
+
+        entry.bind("<Return>", confirm)
+
+        buttons = tk.Frame(dialog, bg=self._parent.colors["bg"])
+        buttons.pack(fill=tk.X, padx=20, pady=14)
+        tk.Button(
+            buttons,
+            text="Cancel",
+            command=dialog.destroy,
+            bg=self._parent.colors["panel"],
+            fg=self._parent.colors["text"],
+            activebackground=self._parent.colors["field"],
+            activeforeground=self._parent.colors["text"],
+            relief=tk.FLAT,
+            font=("Segoe UI", 9),
+            padx=10,
+            pady=6,
+            cursor="hand2",
+        ).pack(side=tk.RIGHT)
+        tk.Button(
+            buttons,
+            text="Sideload",
+            command=confirm,
+            bg=self._parent.colors["accent"],
+            fg="#07111f",
+            activebackground=self._parent.colors["accent_hover"],
+            activeforeground="#07111f",
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+            padx=12,
+            pady=6,
+            cursor="hand2",
+        ).pack(side=tk.RIGHT, padx=(0, 8))
+
+        dialog.wait_window()
+        if self._win.winfo_exists():
+            self._win.grab_set()
+        return result["url"]
+
+    def _on_sideload(self):
+        url = self._ask_sideload_url()
+        if not url:
+            return
+        # Apply pending deselections so the sideloaded run starts from the
+        # cards that are actually still wanted.
+        if self._marked and not self._reload_preview():
+            return
+        self._parent._pending_sideload_url = url
         self._win.grab_release()
         self._win.destroy()
         self._done_event.set()
@@ -1463,6 +1638,7 @@ class MtgDeckGui(TkRoot):
 
         self.configure(bg=self.colors["bg"])
         self.always_accept_token_artwork = False
+        self._pending_sideload_url = None
         self._configure_grid()
         self._build_widgets()
         self._perform_startup_cleanup()
@@ -1697,6 +1873,7 @@ class MtgDeckGui(TkRoot):
         self.run_button.configure(state=tk.DISABLED, text="Running...")
         self.artwork_button.configure(state=tk.DISABLED)
         self.token_artwork_button.configure(state=tk.DISABLED)
+        self._pending_sideload_url = None
         self.status.set("Running fetch, PDF generation, and open steps...")
         self.clear_log()
 
@@ -1718,91 +1895,119 @@ class MtgDeckGui(TkRoot):
             cleaned = _clean_folder(front_folder)
             self.append_log(f"Cleaned {cleaned} existing file(s) from game/front/\n")
 
-            # Step 3 – download card images (including tokens) via the MTG plugin
-            fetch_cmd = [
-                script_python(),
-                os.path.join("plugins", "mtg", "fetch.py"),
-                deck_url,
-                "url",
-                "--tokens",
-            ]
-            self.append_log("\n== Downloading card images ==\n")
-            self.append_log(f"{self._format_command(fetch_cmd)}\n\n")
-            double_faced_cards = []
-
-            def capture_double_faced_card(line):
-                card = _parse_double_faced_card_line(line)
-                if card is not None and card not in double_faced_cards:
-                    double_faced_cards.append(card)
-
-            exit_code = self._run_command(
-                fetch_cmd, line_callback=capture_double_faced_card
-            )
-            if exit_code != 0:
-                raise RuntimeError(f"Download failed with exit code {exit_code}.")
-
-            for card in double_faced_cards:
-                stems = _double_faced_card_stems(card)
-                front_paths = _find_images_with_stems(front_folder, stems)
-                back_paths = _find_images_with_stems(double_sided_folder, stems)
-                if not front_paths and not back_paths:
-                    self.append_log(
-                        f'Could not find downloaded files for double-faced card: '
-                        f'{card["name"]}\n',
-                        "error",
+            current_url = deck_url
+            sideload_round = 0
+            while True:
+                if sideload_round:
+                    renamed = _shift_existing_card_indices(
+                        front_folder, double_sided_folder
                     )
-                    continue
+                    self.append_log(
+                        f"Preserved {renamed} existing card image(s) before "
+                        "sideloading.\n"
+                    )
 
-                removal_done = threading.Event()
+                # Step 3 – download card images (including tokens) via the MTG plugin
+                fetch_cmd = [
+                    script_python(),
+                    os.path.join("plugins", "mtg", "fetch.py"),
+                    current_url,
+                    "url",
+                    "--tokens",
+                ]
+                self.append_log("\n== Downloading card images ==\n")
+                self.append_log(f"{self._format_command(fetch_cmd)}\n\n")
+                double_faced_cards = []
+
+                def capture_double_faced_card(line):
+                    card = _parse_double_faced_card_line(line)
+                    if card is not None and card not in double_faced_cards:
+                        double_faced_cards.append(card)
+
+                exit_code = self._run_command(
+                    fetch_cmd, line_callback=capture_double_faced_card
+                )
+                if exit_code != 0:
+                    raise RuntimeError(f"Download failed with exit code {exit_code}.")
+
+                for card in double_faced_cards:
+                    stems = _double_faced_card_stems(card)
+                    front_paths = _find_images_with_stems(front_folder, stems)
+                    back_paths = _find_images_with_stems(double_sided_folder, stems)
+                    if not front_paths and not back_paths:
+                        self.append_log(
+                            f'Could not find downloaded files for double-faced card: '
+                            f'{card["name"]}\n',
+                            "error",
+                        )
+                        continue
+
+                    removal_done = threading.Event()
+                    self.after(
+                        0,
+                        lambda card=card, front_paths=front_paths,
+                        back_paths=back_paths, removal_done=removal_done:
+                        DoubleFacedRemovalWindow(
+                            self,
+                            card,
+                            front_paths,
+                            back_paths,
+                            removal_done,
+                        ),
+                    )
+                    removal_done.wait()
+
+                # Basic lands are intentionally excluded from every generated PDF.
+                for land, count in _remove_basic_lands(front_folder).items():
+                    if count:
+                        self.append_log(f"{count} {land} removed\n")
+
+                # Step 4 – pause: open the token review window on the main thread
+                # and block this background thread until the user clicks Continue.
+                # Sideloaded rounds always enable token artwork replacement.
+                self.append_log("\nOpening token review window\u2026\n")
+                token_artwork_mode = change_token_artwork or sideload_round > 0
+                review_done = threading.Event()
                 self.after(
                     0,
-                    lambda card=card, front_paths=front_paths,
-                    back_paths=back_paths, removal_done=removal_done:
-                    DoubleFacedRemovalWindow(
+                    lambda review_done=review_done,
+                    token_artwork_mode=token_artwork_mode: TokenReviewWindow(
                         self,
-                        card,
-                        front_paths,
-                        back_paths,
-                        removal_done,
+                        front_folder,
+                        review_done,
+                        allow_token_artwork=token_artwork_mode,
                     ),
                 )
-                removal_done.wait()
+                review_done.wait()
+                self.append_log("Token review complete.\n")
 
-            # Basic lands are intentionally excluded from every generated PDF.
-            for land, count in _remove_basic_lands(front_folder).items():
-                if count:
-                    self.append_log(f"{count} {land} removed\n")
+                # Step 5 - review all remaining non-token cards before continuing.
+                self.append_log("\nOpening all-card review window...\n")
+                card_review_done = threading.Event()
+                self.after(
+                    0,
+                    lambda card_review_done=card_review_done: TokenReviewWindow(
+                        self,
+                        front_folder,
+                        card_review_done,
+                        include_tokens=False,
+                    ),
+                )
+                card_review_done.wait()
+                self.append_log("All-card review complete.\n")
 
-            # Step 4 – pause: open the token review window on the main thread and
-            #           block this background thread until the user clicks Continue
-            self.append_log("\nOpening token review window\u2026\n")
-            review_done = threading.Event()
-            self.after(
-                0,
-                lambda: TokenReviewWindow(
-                    self,
-                    front_folder,
-                    review_done,
-                    allow_token_artwork=change_token_artwork,
-                ),
-            )
-            review_done.wait()
-            self.append_log("Token review complete.\n")
-
-            # Step 5 - review all remaining non-token cards before continuing.
-            self.append_log("\nOpening all-card review window...\n")
-            card_review_done = threading.Event()
-            self.after(
-                0,
-                lambda: TokenReviewWindow(
-                    self,
-                    front_folder,
-                    card_review_done,
-                    include_tokens=False,
-                ),
-            )
-            card_review_done.wait()
-            self.append_log("All-card review complete.\n")
+                # The print preview's "Sideload new cards" button stores a URL
+                # and resumes this thread; fetch it and repeat the reviews.
+                sideload_url = self._pending_sideload_url
+                self._pending_sideload_url = None
+                if sideload_url:
+                    current_url = sideload_url
+                    sideload_round += 1
+                    self.append_log(
+                        f"\n== Sideloading additional cards ==\n{sideload_url}\n"
+                    )
+                    continue
+                break
 
             if change_artwork:
                 # Pause so artwork can be replaced before the PDF is created.

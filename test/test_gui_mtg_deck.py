@@ -197,6 +197,73 @@ class GuiHelperTests(unittest.TestCase):
                     (254, 0, 0),
                 )
 
+    def test_shift_existing_card_indices_moves_files_out_of_fetch_range(self):
+        with tempfile.TemporaryDirectory(dir=MODULE_PATH.parent) as temp_dir:
+            root = Path(temp_dir)
+            front = root / "front"
+            double_sided = root / "double_sided"
+            front.mkdir()
+            double_sided.mkdir()
+            (front / "1SolRing1.png").write_bytes(b"front")
+            (front / "12Squirrel_token1.png").write_bytes(b"token")
+            (front / "3Transform1.png").write_bytes(b"dfc-front")
+            (double_sided / "3Transform1.png").write_bytes(b"dfc-back")
+
+            renamed = gui._shift_existing_card_indices(
+                str(front), str(double_sided)
+            )
+
+            self.assertEqual(renamed, 4)
+            self.assertEqual(
+                sorted(path.name for path in front.iterdir()),
+                ["1001SolRing1.png", "1003Transform1.png", "1012Squirrel_token1.png"],
+            )
+            # Fronts and backs keep matching stems after the shift.
+            self.assertEqual(
+                [path.name for path in double_sided.iterdir()],
+                ["1003Transform1.png"],
+            )
+
+            # A second sideload shifts into the next free thousand-range.
+            (front / "1NewCard1.png").write_bytes(b"new")
+            gui._shift_existing_card_indices(str(front), str(double_sided))
+            self.assertIn("2001NewCard1.png", {p.name for p in front.iterdir()})
+            self.assertIn("3012Squirrel_token1.png", {p.name for p in front.iterdir()})
+
+    def test_sideload_button_stores_url_and_resumes_workflow(self):
+        preview = object.__new__(gui.PrintPreviewWindow)
+        preview._parent = Mock()
+        preview._win = Mock()
+        preview._done_event = Mock()
+        preview._marked = set()
+        preview._ask_sideload_url = Mock(
+            return_value="https://www.moxfield.com/decks/abc"
+        )
+
+        preview._on_sideload()
+
+        self.assertEqual(
+            preview._parent._pending_sideload_url,
+            "https://www.moxfield.com/decks/abc",
+        )
+        preview._win.destroy.assert_called_once_with()
+        preview._done_event.set.assert_called_once_with()
+
+    def test_sideload_cancel_keeps_preview_open(self):
+        preview = object.__new__(gui.PrintPreviewWindow)
+        preview._parent = Mock()
+        preview._parent._pending_sideload_url = None
+        preview._win = Mock()
+        preview._done_event = Mock()
+        preview._marked = set()
+        preview._ask_sideload_url = Mock(return_value=None)
+
+        preview._on_sideload()
+
+        self.assertIsNone(preview._parent._pending_sideload_url)
+        preview._win.destroy.assert_not_called()
+        preview._done_event.set.assert_not_called()
+
     def test_move_download_to_cleanup_avoids_overwriting(self):
         with tempfile.TemporaryDirectory(dir=MODULE_PATH.parent) as temp_dir:
             root = Path(temp_dir)
