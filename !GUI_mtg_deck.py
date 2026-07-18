@@ -31,12 +31,12 @@ IMAGE_EXTENSIONS = {
     ".gif", ".webp", ".tif", ".tiff", ".bmp",
 }
 WORKFLOW_STEPS = (
-    ("1. Choose a routine", "Paste a Moxfield URL and select one of the three workflow buttons."),
-    ("2. Download cards", "Clear old workspace files, fetch the deck and tokens, then remove basic lands."),
+    ("1. Start the workflow", "Paste a Moxfield URL and click Run Workflow."),
+    ("2. Download cards", "Clear old workspace files, fetch the deck and tokens, then remove basic lands unless they are kept."),
     ("3. Filter double faces", "Cards whose names contain // are shown briefly, then excluded."),
-    ("4. Select tokens", "Click to deselect tokens. Token-art mode also enables right-click replacement."),
-    ("5. Select main cards", "Review the remaining cards and deselect anything you do not want."),
-    ("6. Optional review", "Pause for manual artwork changes or open the eight-card print preview. The preview can also sideload another deck."),
+    ("4. Select tokens", "Click to deselect tokens. Right-click a token to replace its artwork."),
+    ("5. Select main cards", "Review the remaining cards. Right-click a card to replace its artwork."),
+    ("6. Optional preview", "Open the eight-card print preview, which can also sideload another deck."),
     ("7. Create the PDF", "Build the A4 print-ready PDF and open it in the default viewer."),
 )
 TkRoot = TkinterDnD.Tk if TkinterDnD is not None else tk.Tk
@@ -47,26 +47,24 @@ TkRoot = TkinterDnD.Tk if TkinterDnD is not None else tk.Tk
 #    are deleted at startup. Tracked README/EMPTY placeholders are preserved.
 # 3. plugins/mtg/fetch.py downloads every card image (including tokens)
 #    into game/front/. All copies of Mountain, Island, Forest, Swamp, and
-#    Plains are then removed automatically and the counts are logged.
+#    Plains are then removed automatically and the counts are logged, unless
+#    the "Keep basic lands" toggle on the entry window is enabled.
 # 4. Execution PAUSES — a Token Review window opens.  It scans game/front/
 #    for any image whose filename contains "token" and shows thumbnails in
 #    an 8-column × 3-row grid (24 cards per page).  Clicking a card toggles
 #    a red ✕ overlay.  If more than 24 token images exist, a "Next page"
 #    button appears at the bottom.  "Delete all ✕" removes every marked
 #    image from disk. "Continue" also deletes any marked images, then closes
-#    the window and resumes the workflow. The token-artwork routine also lets
-#    the user right-click a token to preview and confirm replacement artwork.
+#    the window and resumes the workflow. Right-clicking a token previews and
+#    confirms replacement artwork.
 # 5. A second review window shows every non-token card with the same paging,
-#    marking, deletion, and Continue controls.  Its print preview offers a
-#    "Sideload new cards" button: the user enters another Moxfield URL, the
-#    existing images are renamed into a higher index range so the new download
-#    cannot overwrite them, and steps 3-5 repeat with token-artwork mode on.
-# 6. When "Change Artwork before .pdf" was selected, execution PAUSES again
-#    so the user can replace artwork in game/front/. The normal workflow skips
-#    this pause.
-# 7. create_pdf.py lays out all remaining images in game/front/ into an A4
+#    marking, deletion, Continue, and right-click artwork controls.  Its print
+#    preview offers a "Sideload new cards" button: the user enters another
+#    Moxfield URL, the existing images are renamed into a higher index range so
+#    the new download cannot overwrite them, and steps 3-5 repeat.
+# 6. create_pdf.py lays out all remaining images in game/front/ into an A4
 #    PDF saved to game/output/game.pdf.
-# 8. The finished PDF is opened with the system default viewer.
+# 7. The finished PDF is opened with the system default viewer.
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -237,20 +235,30 @@ def _list_download_pngs(folder: str) -> list:
         return []
 
 
-def _token_name_from_path(path: str) -> str:
-    """Turn a fetched filename such as ``6CatWarrior_token1.png`` into a name."""
+def _card_name_from_path(path: str) -> str:
+    """Turn a fetched filename such as ``6CatWarrior_token1.png`` or
+    ``1SolRing1.png`` into a card name."""
     stem = os.path.splitext(os.path.basename(path))[0]
-    match = re.fullmatch(r"\d+(.+)_token\d+", stem, flags=re.IGNORECASE)
-    compact_name = match.group(1) if match else stem
+    compact_name = stem.lstrip("0123456789")
     compact_name = re.sub(r"_token\d*$", "", compact_name, flags=re.IGNORECASE)
+    compact_name = re.sub(r"\d+$", "", compact_name)
     compact_name = compact_name.replace("_", " ")
     compact_name = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", compact_name)
     return compact_name.strip() or stem
 
 
 def _token_search_url(path: str) -> str:
-    query = quote_plus(f"{_token_name_from_path(path)} type:token")
+    query = quote_plus(f"{_card_name_from_path(path)} type:token")
     return f"https://scryfall.com/search?as=grid&order=name&q={query}"
+
+
+def _card_search_url(path: str) -> str:
+    """Scryfall search showing every print of a non-token card."""
+    query = quote_plus(_card_name_from_path(path))
+    return (
+        "https://scryfall.com/search?as=grid&order=released&unique=prints"
+        f"&q={query}"
+    )
 
 
 def _replace_image_file(source: str, target: str) -> None:
@@ -571,13 +579,13 @@ class TokenReviewWindow:
         folder: str,
         done_event: threading.Event,
         include_tokens: bool = True,
-        allow_token_artwork: bool = False,
+        allow_artwork: bool = False,
     ):
         self._parent = parent
         self._folder = folder
         self._done_event = done_event
         self._include_tokens = include_tokens
-        self._allow_token_artwork = include_tokens and allow_token_artwork
+        self._allow_artwork = allow_artwork
         self._marked: set = set()
         self._page = 0
         self._thumb_refs: list = []
@@ -736,7 +744,7 @@ class TokenReviewWindow:
                 canvas.configure(highlightbackground=self._parent.colors["error"])
 
             canvas.bind("<Button-1>", self._on_card_click)
-            if self._allow_token_artwork:
+            if self._allow_artwork:
                 canvas.bind("<Button-3>", self._on_card_right_click)
 
     # ── interactions ─────────────────────────────────────────────────────────
@@ -776,10 +784,11 @@ class TokenReviewWindow:
 
         total_pages = max(1, -(-len(self._images) // self.PAGE_SIZE))  # ceiling division
 
-        if self._allow_token_artwork:
+        if self._allow_artwork:
+            subject = "token" if self._include_tokens else "card"
             tk.Label(
                 self._btn_frame,
-                text="Right-click a token to change its artwork",
+                text=f"Right-click a {subject} to change its artwork",
                 bg=self._parent.colors["bg"], fg=self._parent.colors["muted"],
                 font=("Segoe UI", 9),
             ).pack(side=tk.LEFT, padx=(0, 12))
@@ -1345,16 +1354,18 @@ class PrintPreviewWindow:
 
 
 class TokenArtworkWindow:
-    """Preview dropped/downloaded art and replace one token after confirmation."""
+    """Preview dropped/downloaded art and replace one card or token after confirmation."""
 
     PREVIEW_W = 300
     PREVIEW_H = 410
     WATCH_INTERVAL_MS = 3000
 
-    def __init__(self, owner: TokenReviewWindow, token_path: str):
+    def __init__(self, owner: TokenReviewWindow, card_path: str):
         self._owner = owner
         self._parent = owner._parent
-        self._token_path = token_path
+        self._card_path = card_path
+        self._is_token = owner._include_tokens
+        self._subject = "token" if self._is_token else "card"
         self._downloads_folder = _downloads_folder()
         self._download_pngs = _list_download_pngs(self._downloads_folder)
         self._known_download_pngs = {
@@ -1369,7 +1380,9 @@ class TokenArtworkWindow:
 
         win = tk.Toplevel(owner._win)
         self._win = win
-        win.title(f"Token artwork - {_token_name_from_path(token_path)}")
+        win.title(
+            f"{self._subject.capitalize()} artwork - {_card_name_from_path(card_path)}"
+        )
         win.configure(bg=self._parent.colors["bg"])
         win.geometry("520x690")
         win.resizable(False, False)
@@ -1379,7 +1392,7 @@ class TokenArtworkWindow:
 
         tk.Label(
             win,
-            text=f"Replace {_token_name_from_path(token_path)} artwork",
+            text=f"Replace {_card_name_from_path(card_path)} artwork",
             bg=self._parent.colors["bg"], fg=self._parent.colors["text"],
             font=("Segoe UI", 14, "bold"),
         ).pack(padx=20, pady=(18, 4))
@@ -1457,7 +1470,7 @@ class TokenArtworkWindow:
 
         tk.Checkbutton(
             win,
-            text="Always accept new token artwork this instance",
+            text=f"Always accept new {self._subject} artwork this instance",
             variable=self._always_accept,
             command=self._remember_always_accept,
             bg=self._parent.colors["bg"],
@@ -1473,7 +1486,10 @@ class TokenArtworkWindow:
         win.after(150, self._open_search_and_start_watcher)
 
     def _open_search_and_start_watcher(self):
-        search_url = _token_search_url(self._token_path)
+        if self._is_token:
+            search_url = _token_search_url(self._card_path)
+        else:
+            search_url = _card_search_url(self._card_path)
         try:
             opened = webbrowser.open(search_url, new=2)
         except Exception as exc:
@@ -1542,7 +1558,7 @@ class TokenArtworkWindow:
     def _choose_image(self):
         path = filedialog.askopenfilename(
             parent=self._win,
-            title="Choose replacement token artwork",
+            title=f"Choose replacement {self._subject} artwork",
             filetypes=[
                 ("Image files", "*.png *.jpg *.jpeg *.webp *.bmp"),
                 ("All files", "*.*"),
@@ -1578,7 +1594,7 @@ class TokenArtworkWindow:
         if self._candidate is None:
             return
         try:
-            _replace_image_file(self._candidate, self._token_path)
+            _replace_image_file(self._candidate, self._card_path)
             moved_to = None
             if (
                 os.path.splitext(self._candidate)[1].lower() == ".png"
@@ -1592,7 +1608,7 @@ class TokenArtworkWindow:
 
         self._owner._render_page()
         self._parent.append_log(
-            f"Replaced token artwork: {os.path.basename(self._token_path)}\n"
+            f"Replaced {self._subject} artwork: {os.path.basename(self._card_path)}\n"
         )
         if moved_to:
             self._parent.append_log(
@@ -1729,7 +1745,7 @@ class MtgDeckGui(TkRoot):
         self.run_button = tk.Button(
             form,
             text="Run Workflow",
-            command=lambda: self.run_workflow(change_artwork=False),
+            command=self.run_workflow,
             bg=self.colors["accent"],
             fg="#07111f",
             activebackground=self.colors["accent_hover"],
@@ -1742,39 +1758,19 @@ class MtgDeckGui(TkRoot):
         )
         self.run_button.grid(row=0, column=2, sticky="e", padx=(12, 0))
 
-        self.artwork_button = tk.Button(
+        self.keep_basic_lands = tk.BooleanVar(value=False)
+        tk.Checkbutton(
             form,
-            text="Change Artwork before .pdf",
-            command=lambda: self.run_workflow(change_artwork=True),
+            text="Keep basic lands (Plains, Island, Swamp, Mountain, Forest)",
+            variable=self.keep_basic_lands,
             bg=self.colors["panel"],
             fg=self.colors["text"],
-            activebackground=self.colors["field"],
+            activebackground=self.colors["panel"],
             activeforeground=self.colors["text"],
-            relief=tk.FLAT,
-            font=("Segoe UI", 10, "bold"),
-            padx=18,
-            pady=9,
+            selectcolor=self.colors["field"],
+            font=("Segoe UI", 9),
             cursor="hand2",
-        )
-        self.artwork_button.grid(row=1, column=2, sticky="e", padx=(12, 0), pady=(8, 0))
-
-        self.token_artwork_button = tk.Button(
-            form,
-            text="Wanna change token artwork?",
-            command=lambda: self.run_workflow(change_token_artwork=True),
-            bg=self.colors["panel"],
-            fg=self.colors["text"],
-            activebackground=self.colors["field"],
-            activeforeground=self.colors["text"],
-            relief=tk.FLAT,
-            font=("Segoe UI", 10, "bold"),
-            padx=18,
-            pady=9,
-            cursor="hand2",
-        )
-        self.token_artwork_button.grid(
-            row=2, column=2, sticky="e", padx=(12, 0), pady=(8, 0)
-        )
+        ).grid(row=1, column=1, sticky="w", pady=(8, 0))
 
         self._build_workflow_guide()
 
@@ -1864,29 +1860,25 @@ class MtgDeckGui(TkRoot):
                 wraplength=260,
             ).pack(fill=tk.X, pady=(1, 10))
 
-    def run_workflow(self, change_artwork=False, change_token_artwork=False):
+    def run_workflow(self):
         deck_url = self.deck_url.get().strip()
         if not deck_url:
             messagebox.showerror("Deck URL required", "Enter a deck URL first.")
             return
 
         self.run_button.configure(state=tk.DISABLED, text="Running...")
-        self.artwork_button.configure(state=tk.DISABLED)
-        self.token_artwork_button.configure(state=tk.DISABLED)
         self._pending_sideload_url = None
         self.status.set("Running fetch, PDF generation, and open steps...")
         self.clear_log()
 
         worker = threading.Thread(
             target=self._run_workflow_thread,
-            args=(deck_url, change_artwork, change_token_artwork),
+            args=(deck_url, self.keep_basic_lands.get()),
             daemon=True,
         )
         worker.start()
 
-    def _run_workflow_thread(
-        self, deck_url, change_artwork=False, change_token_artwork=False
-    ):
+    def _run_workflow_thread(self, deck_url, keep_basic_lands=False):
         front_folder = os.path.join(REPO_ROOT, "game", "front")
         double_sided_folder = os.path.join(REPO_ROOT, "game", "double_sided")
 
@@ -1957,25 +1949,26 @@ class MtgDeckGui(TkRoot):
                     )
                     removal_done.wait()
 
-                # Basic lands are intentionally excluded from every generated PDF.
-                for land, count in _remove_basic_lands(front_folder).items():
-                    if count:
-                        self.append_log(f"{count} {land} removed\n")
+                # Basic lands are excluded from the PDF unless the entry-window
+                # toggle asks to keep them.
+                if keep_basic_lands:
+                    self.append_log("Keeping basic lands.\n")
+                else:
+                    for land, count in _remove_basic_lands(front_folder).items():
+                        if count:
+                            self.append_log(f"{count} {land} removed\n")
 
                 # Step 4 – pause: open the token review window on the main thread
                 # and block this background thread until the user clicks Continue.
-                # Sideloaded rounds always enable token artwork replacement.
                 self.append_log("\nOpening token review window\u2026\n")
-                token_artwork_mode = change_token_artwork or sideload_round > 0
                 review_done = threading.Event()
                 self.after(
                     0,
-                    lambda review_done=review_done,
-                    token_artwork_mode=token_artwork_mode: TokenReviewWindow(
+                    lambda review_done=review_done: TokenReviewWindow(
                         self,
                         front_folder,
                         review_done,
-                        allow_token_artwork=token_artwork_mode,
+                        allow_artwork=True,
                     ),
                 )
                 review_done.wait()
@@ -1991,6 +1984,7 @@ class MtgDeckGui(TkRoot):
                         front_folder,
                         card_review_done,
                         include_tokens=False,
+                        allow_artwork=True,
                     ),
                 )
                 card_review_done.wait()
@@ -2009,15 +2003,7 @@ class MtgDeckGui(TkRoot):
                     continue
                 break
 
-            if change_artwork:
-                # Pause so artwork can be replaced before the PDF is created.
-                self.append_log("\nWaiting for artwork changes before PDF creation...\n")
-                artwork_ready = threading.Event()
-                self.after(0, lambda: self._prompt_for_artwork_changes(artwork_ready))
-                artwork_ready.wait()
-                self.append_log("Artwork is ready. Proceeding to PDF creation.\n")
-            else:
-                self.append_log("Proceeding to PDF creation.\n")
+            self.append_log("Proceeding to PDF creation.\n")
 
             # Step 7 – create the A4 PDF from whatever images remain in game/front/
             pdf_cmd = [
@@ -2067,16 +2053,6 @@ class MtgDeckGui(TkRoot):
 
         return process.wait()
 
-    def _prompt_for_artwork_changes(self, done_event):
-        """Pause the workflow until the user confirms the artwork is ready."""
-        messagebox.showinfo(
-            "Change Artwork before .pdf",
-            "You can now replace or edit the images in game/front/.\n\n"
-            "Click OK when the artwork is ready. The PDF will be created afterwards.",
-            parent=self,
-        )
-        done_event.set()
-
     def _open_pdf(self, path):
         if sys.platform.startswith("win"):
             os.startfile(path)  # type: ignore[attr-defined]
@@ -2106,14 +2082,10 @@ class MtgDeckGui(TkRoot):
     def _set_success(self):
         self.status.set("Done. PDF opened.")
         self.run_button.configure(state=tk.NORMAL, text="Run Workflow")
-        self.artwork_button.configure(state=tk.NORMAL)
-        self.token_artwork_button.configure(state=tk.NORMAL)
 
     def _set_failed(self, message):
         self.status.set("Failed. See log for details.")
         self.run_button.configure(state=tk.NORMAL, text="Run Workflow")
-        self.artwork_button.configure(state=tk.NORMAL)
-        self.token_artwork_button.configure(state=tk.NORMAL)
         messagebox.showerror("Workflow failed", message)
 
     def _format_command(self, command):

@@ -157,11 +157,21 @@ class GuiHelperTests(unittest.TestCase):
     def test_token_name_and_scryfall_search_url(self):
         path = "12CatWarrior_token1.png"
 
-        self.assertEqual(gui._token_name_from_path(path), "Cat Warrior")
+        self.assertEqual(gui._card_name_from_path(path), "Cat Warrior")
         self.assertEqual(
             gui._token_search_url(path),
             "https://scryfall.com/search?as=grid&order=name&"
             "q=Cat+Warrior+type%3Atoken",
+        )
+
+    def test_card_name_and_scryfall_prints_search_url(self):
+        path = "1003SolRing1.png"
+
+        self.assertEqual(gui._card_name_from_path(path), "Sol Ring")
+        self.assertEqual(
+            gui._card_search_url(path),
+            "https://scryfall.com/search?as=grid&order=released&unique=prints"
+            "&q=Sol+Ring",
         )
 
     def test_list_download_pngs_only_checks_direct_children(self):
