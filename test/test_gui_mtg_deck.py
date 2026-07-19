@@ -35,10 +35,10 @@ class GuiHelperTests(unittest.TestCase):
             )
             artwork._confirm.assert_called_once_with()
 
-    def test_startup_cleanup_clears_runtime_files_and_keeps_placeholders(self):
+    def test_workspace_cleanup_clears_runtime_files_and_keeps_placeholders(self):
         with tempfile.TemporaryDirectory(dir=MODULE_PATH.parent) as temp_dir:
             root = Path(temp_dir)
-            for folder_name in gui.STARTUP_CLEAN_FOLDERS:
+            for folder_name in gui.WORKSPACE_CLEAN_FOLDERS:
                 folder = root / "game" / folder_name
                 folder.mkdir(parents=True)
                 (folder / "working-file.png").write_bytes(b"data")
@@ -49,13 +49,13 @@ class GuiHelperTests(unittest.TestCase):
             decklist = root / "game" / "decklist"
             (decklist / "EMPTY.md").write_text("keep")
 
-            removed = gui._clean_startup_workspace(str(root))
+            removed = gui._clean_workspace(str(root))
 
             self.assertEqual(
                 removed,
-                {folder_name: 2 for folder_name in gui.STARTUP_CLEAN_FOLDERS},
+                {folder_name: 2 for folder_name in gui.WORKSPACE_CLEAN_FOLDERS},
             )
-            for folder_name in gui.STARTUP_CLEAN_FOLDERS:
+            for folder_name in gui.WORKSPACE_CLEAN_FOLDERS:
                 folder = root / "game" / folder_name
                 self.assertTrue((folder / "README.md").exists())
                 self.assertFalse((folder / "working-file.png").exists())
@@ -134,6 +134,29 @@ class GuiHelperTests(unittest.TestCase):
             self.assertEqual(errors, [])
             self.assertFalse(front.exists())
             self.assertFalse(back.exists())
+
+    def test_orphaned_backs_are_removed_before_pdf_creation(self):
+        with tempfile.TemporaryDirectory(dir=MODULE_PATH.parent) as temp_dir:
+            root = Path(temp_dir)
+            front = root / "front"
+            double_sided = root / "double_sided"
+            front.mkdir()
+            double_sided.mkdir()
+            (front / "3Transform1.png").write_bytes(b"front")
+            (double_sided / "3Transform1.png").write_bytes(b"matched back")
+            (double_sided / "50IncubatorPhyrexian_token1.png").write_bytes(
+                b"orphaned back"
+            )
+            (double_sided / "README.md").write_text("keep")
+
+            removed = gui._remove_orphaned_backs(str(front), str(double_sided))
+
+            self.assertEqual(
+                [Path(path).name for path in removed],
+                ["50IncubatorPhyrexian_token1.png"],
+            )
+            self.assertTrue((double_sided / "3Transform1.png").exists())
+            self.assertTrue((double_sided / "README.md").exists())
 
     def test_selector_navigation_stays_inside_available_pages(self):
         selector = object.__new__(gui.TokenReviewWindow)

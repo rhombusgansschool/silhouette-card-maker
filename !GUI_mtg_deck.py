@@ -24,14 +24,14 @@ REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
 OUTPUT_PDF = os.path.join(REPO_ROOT, "game", "output", "game.pdf")
 CLEANUP_DIR = os.path.join(REPO_ROOT, "z_deletes_fromCardmaker")
 BASIC_LAND_NAMES = ("Mountain", "Island", "Forest", "Swamp", "Plains")
-STARTUP_CLEAN_FOLDERS = ("back", "decklist", "double_sided", "front")
+WORKSPACE_CLEAN_FOLDERS = ("back", "decklist", "double_sided", "front")
 WORKSPACE_PLACEHOLDERS = {"README.md", "EMPTY.md"}
 IMAGE_EXTENSIONS = {
     ".png", ".apng", ".jpg", ".jpeg", ".jpx", ".jp2",
     ".gif", ".webp", ".tif", ".tiff", ".bmp",
 }
 WORKFLOW_STEPS = (
-    ("1. Start the workflow", "Paste a Moxfield URL and click Run Workflow."),
+    ("1. Start the workflow", "Paste a Moxfield URL and click Run Workflow. Recover from game/front reuses the images already on disk."),
     ("2. Download cards", "Clear old workspace files, fetch the deck and tokens, then remove basic lands unless they are kept."),
     ("3. Filter double faces", "Cards whose names contain // are shown briefly, then excluded."),
     ("4. Select tokens", "Click to deselect tokens. Right-click a token to replace its artwork."),
@@ -44,7 +44,9 @@ TkRoot = TkinterDnD.Tk if TkinterDnD is not None else tk.Tk
 # ─── Workflow overview ───────────────────────────────────────────────────────
 # 1. User enters a Moxfield deck URL and clicks "Run Workflow".
 # 2. Existing working files in game/back/, decklist/, double_sided/, and front/
-#    are deleted at startup. Tracked README/EMPTY placeholders are preserved.
+#    are deleted when a normal run starts (not at app startup, so the images in
+#    game/front/ survive a restart). Tracked README/EMPTY placeholders are
+#    preserved.
 # 3. plugins/mtg/fetch.py downloads every card image (including tokens)
 #    into game/front/. All copies of Mountain, Island, Forest, Swamp, and
 #    Plains are then removed automatically and the counts are logged, unless
@@ -65,6 +67,9 @@ TkRoot = TkinterDnD.Tk if TkinterDnD is not None else tk.Tk
 # 6. create_pdf.py lays out all remaining images in game/front/ into an A4
 #    PDF saved to game/output/game.pdf.
 # 7. The finished PDF is opened with the system default viewer.
+# The "Recover from game/front" button restarts the process from step 4 using
+# the images already in game/front/ (no cleanup, no download) — useful when a
+# previous run errored out after the download finished.
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -100,11 +105,11 @@ def _clean_folder(folder: str) -> int:
     return removed
 
 
-def _clean_startup_workspace(repo_root: str) -> dict:
+def _clean_workspace(repo_root: str) -> dict:
     game_folder = os.path.join(repo_root, "game")
     return {
         folder_name: _clean_folder(os.path.join(game_folder, folder_name))
-        for folder_name in STARTUP_CLEAN_FOLDERS
+        for folder_name in WORKSPACE_CLEAN_FOLDERS
     }
 
 
@@ -233,6 +238,18 @@ def _list_download_pngs(folder: str) -> list:
         )
     except OSError:
         return []
+
+
+def _folder_has_images(folder: str) -> bool:
+    """Return True when *folder* directly contains at least one card image."""
+    try:
+        return any(
+            os.path.splitext(name)[1].lower() in IMAGE_EXTENSIONS
+            and os.path.isfile(os.path.join(folder, name))
+            for name in os.listdir(folder)
+        )
+    except OSError:
+        return False
 
 
 def _card_name_from_path(path: str) -> str:
@@ -367,6 +384,29 @@ def _delete_print_card(front_path: str, double_sided_folder: str) -> list:
     except OSError as exc:
         errors.append(f"{os.path.basename(front_path)}: {exc}")
     return errors
+
+
+def _remove_orphaned_backs(front_folder: str, double_sided_folder: str) -> list:
+    """Remove double-sided backs whose front no longer exists.
+
+    create_pdf.py refuses to run when a back has no matching front, so these
+    cards are skipped instead. Returns the removed back paths.
+    """
+    front_stems = set()
+    for current_folder, _, filenames in os.walk(front_folder):
+        for filename in filenames:
+            front_stems.add(os.path.splitext(filename)[0])
+
+    removed = []
+    for current_folder, _, filenames in os.walk(double_sided_folder):
+        for filename in filenames:
+            stem, extension = os.path.splitext(filename)
+            if extension.lower() not in IMAGE_EXTENSIONS or stem in front_stems:
+                continue
+            path = os.path.join(current_folder, filename)
+            os.remove(path)
+            removed.append(path)
+    return removed
 
 
 def _parse_double_faced_card_line(line: str):
@@ -867,12 +907,12 @@ class TokenReviewWindow:
         self._build_bottom_buttons()
 
     def _delete_marked(self):
+        double_sided_folder = os.path.join(REPO_ROOT, "game", "double_sided")
         errors = []
         for path in list(self._marked):
-            try:
-                os.remove(path)
-            except OSError as exc:
-                errors.append(f"{os.path.basename(path)}: {exc}")
+            card_errors = _delete_print_card(path, double_sided_folder)
+            if card_errors:
+                errors.extend(card_errors)
             else:
                 self._marked.discard(path)
                 self._images = [p for p in self._images if p != path]
@@ -1657,32 +1697,6 @@ class MtgDeckGui(TkRoot):
         self._pending_sideload_url = None
         self._configure_grid()
         self._build_widgets()
-        self._perform_startup_cleanup()
-
-    def _perform_startup_cleanup(self):
-        try:
-            removed_by_folder = _clean_startup_workspace(REPO_ROOT)
-        except Exception as exc:
-            error_message = str(exc)
-            self._append_log(f"Startup cleanup failed: {error_message}\n", "error")
-            self.status.set("Startup cleanup failed. See the log.")
-            self.after_idle(
-                lambda error_message=error_message: messagebox.showerror(
-                    "Startup cleanup failed", error_message, parent=self
-                )
-            )
-            return
-
-        total_removed = sum(removed_by_folder.values())
-        details = ", ".join(
-            f"{folder}: {count}"
-            for folder, count in removed_by_folder.items()
-        )
-        self._append_log(
-            f"Startup cleanup removed {total_removed} working file(s) "
-            f"({details}).\n"
-        )
-        self.status.set(f"Ready. Startup cleanup removed {total_removed} file(s).")
 
     def _configure_grid(self):
         self.columnconfigure(0, weight=1)
@@ -1771,6 +1785,22 @@ class MtgDeckGui(TkRoot):
             font=("Segoe UI", 9),
             cursor="hand2",
         ).grid(row=1, column=1, sticky="w", pady=(8, 0))
+
+        self.recover_button = tk.Button(
+            form,
+            text="Recover from game/front",
+            command=self.recover_workflow,
+            bg=self.colors["panel"],
+            fg=self.colors["text"],
+            activebackground=self.colors["field"],
+            activeforeground=self.colors["text"],
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+            padx=18,
+            pady=6,
+            cursor="hand2",
+        )
+        self.recover_button.grid(row=1, column=2, sticky="e", padx=(12, 0), pady=(8, 0))
 
         self._build_workflow_guide()
 
@@ -1865,27 +1895,58 @@ class MtgDeckGui(TkRoot):
         if not deck_url:
             messagebox.showerror("Deck URL required", "Enter a deck URL first.")
             return
+        self._start_workflow(deck_url)
 
+    def recover_workflow(self):
+        """Resume the reviews and PDF steps from the images left in game/front/."""
+        front_folder = os.path.join(REPO_ROOT, "game", "front")
+        if not _folder_has_images(front_folder):
+            messagebox.showerror(
+                "Nothing to recover",
+                "No card images were found in game/front/.",
+            )
+            return
+        self._start_workflow(None, recover=True)
+
+    def _start_workflow(self, deck_url, recover=False):
         self.run_button.configure(state=tk.DISABLED, text="Running...")
+        self.recover_button.configure(state=tk.DISABLED)
         self._pending_sideload_url = None
-        self.status.set("Running fetch, PDF generation, and open steps...")
+        if recover:
+            self.status.set("Recovering from the images in game/front/...")
+        else:
+            self.status.set("Running fetch, PDF generation, and open steps...")
         self.clear_log()
 
         worker = threading.Thread(
             target=self._run_workflow_thread,
-            args=(deck_url, self.keep_basic_lands.get()),
+            args=(deck_url, self.keep_basic_lands.get(), recover),
             daemon=True,
         )
         worker.start()
 
-    def _run_workflow_thread(self, deck_url, keep_basic_lands=False):
+    def _run_workflow_thread(self, deck_url, keep_basic_lands=False, recover=False):
         front_folder = os.path.join(REPO_ROOT, "game", "front")
         double_sided_folder = os.path.join(REPO_ROOT, "game", "double_sided")
 
         try:
-            # Step 2 – clean game/front/ so we start with a fresh set of images
-            cleaned = _clean_folder(front_folder)
-            self.append_log(f"Cleaned {cleaned} existing file(s) from game/front/\n")
+            if recover:
+                self.append_log(
+                    "== Recovery: reusing the images already in game/front/ ==\n"
+                )
+            else:
+                # Step 2 – clean the workspace so we start with a fresh set of
+                # images. This runs per workflow (not at startup) so the images
+                # in game/front/ survive an app restart for recovery.
+                removed_by_folder = _clean_workspace(REPO_ROOT)
+                details = ", ".join(
+                    f"{folder}: {count}"
+                    for folder, count in removed_by_folder.items()
+                )
+                self.append_log(
+                    f"Cleaned {sum(removed_by_folder.values())} working "
+                    f"file(s) ({details}).\n"
+                )
 
             current_url = deck_url
             sideload_round = 0
@@ -1899,55 +1960,66 @@ class MtgDeckGui(TkRoot):
                         "sideloading.\n"
                     )
 
-                # Step 3 – download card images (including tokens) via the MTG plugin
-                fetch_cmd = [
-                    script_python(),
-                    os.path.join("plugins", "mtg", "fetch.py"),
-                    current_url,
-                    "url",
-                    "--tokens",
-                ]
-                self.append_log("\n== Downloading card images ==\n")
-                self.append_log(f"{self._format_command(fetch_cmd)}\n\n")
-                double_faced_cards = []
-
-                def capture_double_faced_card(line):
-                    card = _parse_double_faced_card_line(line)
-                    if card is not None and card not in double_faced_cards:
-                        double_faced_cards.append(card)
-
-                exit_code = self._run_command(
-                    fetch_cmd, line_callback=capture_double_faced_card
-                )
-                if exit_code != 0:
-                    raise RuntimeError(f"Download failed with exit code {exit_code}.")
-
-                for card in double_faced_cards:
-                    stems = _double_faced_card_stems(card)
-                    front_paths = _find_images_with_stems(front_folder, stems)
-                    back_paths = _find_images_with_stems(double_sided_folder, stems)
-                    if not front_paths and not back_paths:
-                        self.append_log(
-                            f'Could not find downloaded files for double-faced card: '
-                            f'{card["name"]}\n',
-                            "error",
-                        )
-                        continue
-
-                    removal_done = threading.Event()
-                    self.after(
-                        0,
-                        lambda card=card, front_paths=front_paths,
-                        back_paths=back_paths, removal_done=removal_done:
-                        DoubleFacedRemovalWindow(
-                            self,
-                            card,
-                            front_paths,
-                            back_paths,
-                            removal_done,
-                        ),
+                if recover and not sideload_round:
+                    self.append_log(
+                        "\nSkipping download; the existing images in game/front/ "
+                        "are used as-is.\n"
                     )
-                    removal_done.wait()
+                else:
+                    # Step 3 – download card images (including tokens) via the
+                    # MTG plugin
+                    fetch_cmd = [
+                        script_python(),
+                        os.path.join("plugins", "mtg", "fetch.py"),
+                        current_url,
+                        "url",
+                        "--tokens",
+                    ]
+                    self.append_log("\n== Downloading card images ==\n")
+                    self.append_log(f"{self._format_command(fetch_cmd)}\n\n")
+                    double_faced_cards = []
+
+                    def capture_double_faced_card(line):
+                        card = _parse_double_faced_card_line(line)
+                        if card is not None and card not in double_faced_cards:
+                            double_faced_cards.append(card)
+
+                    exit_code = self._run_command(
+                        fetch_cmd, line_callback=capture_double_faced_card
+                    )
+                    if exit_code != 0:
+                        raise RuntimeError(
+                            f"Download failed with exit code {exit_code}."
+                        )
+
+                    for card in double_faced_cards:
+                        stems = _double_faced_card_stems(card)
+                        front_paths = _find_images_with_stems(front_folder, stems)
+                        back_paths = _find_images_with_stems(
+                            double_sided_folder, stems
+                        )
+                        if not front_paths and not back_paths:
+                            self.append_log(
+                                f'Could not find downloaded files for '
+                                f'double-faced card: {card["name"]}\n',
+                                "error",
+                            )
+                            continue
+
+                        removal_done = threading.Event()
+                        self.after(
+                            0,
+                            lambda card=card, front_paths=front_paths,
+                            back_paths=back_paths, removal_done=removal_done:
+                            DoubleFacedRemovalWindow(
+                                self,
+                                card,
+                                front_paths,
+                                back_paths,
+                                removal_done,
+                            ),
+                        )
+                        removal_done.wait()
 
                 # Basic lands are excluded from the PDF unless the entry-window
                 # toggle asks to keep them.
@@ -2004,6 +2076,30 @@ class MtgDeckGui(TkRoot):
                 break
 
             self.append_log("Proceeding to PDF creation.\n")
+
+            # Backs whose fronts were deleted during review would make
+            # create_pdf.py abort, so those cards are skipped. This guard must
+            # never break the workflow itself.
+            try:
+                orphaned = _remove_orphaned_backs(
+                    front_folder, double_sided_folder
+                )
+                if orphaned:
+                    names = ", ".join(
+                        _card_name_from_path(path) for path in orphaned
+                    )
+                    self.append_log(
+                        f"Skipped {len(orphaned)} double-sided card(s) with a "
+                        f"deleted front: {names}\n"
+                    )
+                    self.after(
+                        0, lambda names=names: self._notify_skipped_backs(names)
+                    )
+            except Exception as exc:
+                self.append_log(
+                    f"Orphaned-back check failed (continuing anyway): {exc}\n",
+                    "error",
+                )
 
             # Step 7 – create the A4 PDF from whatever images remain in game/front/
             pdf_cmd = [
@@ -2079,13 +2175,26 @@ class MtgDeckGui(TkRoot):
         self.log.delete("1.0", tk.END)
         self.log.configure(state=tk.DISABLED)
 
+    def _notify_skipped_backs(self, names):
+        try:
+            messagebox.showinfo(
+                "Cards skipped",
+                "These double-sided cards no longer have a front image, so "
+                f"they were left out of the PDF:\n\n{names}",
+                parent=self,
+            )
+        except Exception:
+            pass
+
     def _set_success(self):
         self.status.set("Done. PDF opened.")
         self.run_button.configure(state=tk.NORMAL, text="Run Workflow")
+        self.recover_button.configure(state=tk.NORMAL)
 
     def _set_failed(self, message):
         self.status.set("Failed. See log for details.")
         self.run_button.configure(state=tk.NORMAL, text="Run Workflow")
+        self.recover_button.configure(state=tk.NORMAL)
         messagebox.showerror("Workflow failed", message)
 
     def _format_command(self, command):

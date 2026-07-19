@@ -30,3 +30,7 @@ hugo/public/
 
 # Used token artwork downloads are retained here instead of being deleted.
 z_deletes_fromCardmaker/
+
+# Generated card images and PDFs must never be committed.
+*.pdf
+*.png
